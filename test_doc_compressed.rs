@@ -1,1 +1,0 @@
-fn test_func(){}fn another_func(){}
