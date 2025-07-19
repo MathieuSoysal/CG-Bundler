@@ -2,7 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/rust-singler.svg)](https://crates.io/crates/rust-singler)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build Status](https://github.com/username/rust-singler/workflows/CI/badge.svg)](https://github.com/username/rust-singler/actions)
+[![Build Status](https://github.com/MathieuSoysal/rust-singler/workflows/CI/badge.svg)](https://github.com/MathieuSoysal/rust-singler/actions)
+[![Release](https://github.com/MathieuSoysal/rust-singler/workflows/Release/badge.svg)](https://github.com/MathieuSoysal/rust-singler/actions)
 [![Documentation](https://docs.rs/rust-singler/badge.svg)](https://docs.rs/rust-singler)
 
 > **A powerful Rust code compression tool that minifies entire Rust codebases into single-line format while preserving functionality and string literals.**
@@ -24,15 +25,61 @@ Rust Singler is a high-performance CLI tool designed to compress Rust source cod
 
 ### Installation
 
+#### From Pre-built Binaries (Recommended)
+
+Download the latest binary for your platform from our [releases page](https://github.com/MathieuSoysal/rust-singler/releases):
+
+**Linux (x86_64)**
+```bash
+curl -L https://github.com/MathieuSoysal/rust-singler/releases/latest/download/rust-singler-linux-amd64 -o rust-singler
+chmod +x rust-singler
+sudo mv rust-singler /usr/local/bin/
+```
+
+**Linux (ARM64)**
+```bash
+curl -L https://github.com/MathieuSoysal/rust-singler/releases/latest/download/rust-singler-linux-arm64 -o rust-singler
+chmod +x rust-singler
+sudo mv rust-singler /usr/local/bin/
+```
+
+**macOS (Intel)**
+```bash
+curl -L https://github.com/MathieuSoysal/rust-singler/releases/latest/download/rust-singler-macos-amd64 -o rust-singler
+chmod +x rust-singler
+sudo mv rust-singler /usr/local/bin/
+```
+
+**macOS (Apple Silicon)**
+```bash
+curl -L https://github.com/MathieuSoysal/rust-singler/releases/latest/download/rust-singler-macos-arm64 -o rust-singler
+chmod +x rust-singler
+sudo mv rust-singler /usr/local/bin/
+```
+
+**Windows**
+```powershell
+# Download rust-singler-windows-amd64.exe from the releases page
+# Add the downloaded file to your PATH
+```
+
+#### From Source
+
 ```bash
 # Install from crates.io
 cargo install rust-singler
 
 # Or build from source
-git clone https://github.com/username/rust-singler.git
+git clone https://github.com/MathieuSoysal/rust-singler.git
 cd rust-singler
 cargo install --path .
 ```
+
+#### Supported Platforms
+
+- **Linux**: x86_64, ARM64
+- **macOS**: x86_64 (Intel), ARM64 (Apple Silicon)
+- **Windows**: x86_64
 
 ### Basic Usage
 
@@ -252,6 +299,44 @@ cargo fmt
 - Include unit tests for new functionality
 - Follow the existing error handling patterns
 
+### Release Process
+
+For maintainers releasing new versions:
+
+1. **Use the Release Script**:
+   ```bash
+   ./scripts/release.sh
+   ```
+   This script will:
+   - Update version in `Cargo.toml`
+   - Run tests to ensure everything works
+   - Create a git tag
+   - Push changes and tag to GitHub
+
+2. **Manual Release** (if needed):
+   ```bash
+   # Update version in Cargo.toml
+   # Commit changes
+   git add Cargo.toml Cargo.lock
+   git commit -m "chore: bump version to X.Y.Z"
+   
+   # Create and push tag
+   git tag -a "vX.Y.Z" -m "Release vX.Y.Z"
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+
+3. **Automated Build**: GitHub Actions will automatically:
+   - Build binaries for all supported platforms
+   - Create a GitHub release
+   - Upload binaries as release assets
+
+The CI/CD pipeline supports:
+- **Automatic releases** on tag push
+- **Cross-platform builds** for Linux, macOS, and Windows
+- **Binary optimization** and stripping for smaller file sizes
+- **Release verification** to ensure binaries work correctly
+
 ## 📊 Performance
 
 Rust Singler is optimized for performance:
@@ -292,8 +377,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Found a bug or have a feature request?
 
-- **GitHub Issues**: [Create an issue](https://github.com/username/rust-singler/issues)
-- **Discussions**: [Join the discussion](https://github.com/username/rust-singler/discussions)
+- **GitHub Issues**: [Create an issue](https://github.com/MathieuSoysal/rust-singler/issues)
+- **Discussions**: [Join the discussion](https://github.com/MathieuSoysal/rust-singler/discussions)
 - **Documentation**: [Read the docs](https://docs.rs/rust-singler)
 
 ---
@@ -302,6 +387,6 @@ Found a bug or have a feature request?
 
 **Made with ❤️ by the Rust community**
 
-[⭐ Star us on GitHub](https://github.com/username/rust-singler) • [📦 View on crates.io](https://crates.io/crates/rust-singler) • [📖 Read the docs](https://docs.rs/rust-singler)
+[⭐ Star us on GitHub](https://github.com/MathieuSoysal/rust-singler) • [📦 View on crates.io](https://crates.io/crates/rust-singler) • [📖 Read the docs](https://docs.rs/rust-singler)
 
 </div>
