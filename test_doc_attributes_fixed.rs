@@ -1,0 +1,1 @@
+fn test_func(){}struct MyStruct{field: String,}

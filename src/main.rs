@@ -1,14 +1,12 @@
-extern crate bundler;
-
-use std::env;
+use rust_singler::cli::CliApplication;
 use std::process;
 
 fn main() {
-    let args: Vec<_> = env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: bundle path/to/project");
+    let app = CliApplication::new();
+    let args = CliApplication::parse_arguments();
+    
+    if let Err(e) = app.run(args) {
+        eprintln!("❌ Error: {}", e);
         process::exit(1);
     }
-    let code = bundler::bundle(&args[1]);
-    println!("{}", code);
 }
