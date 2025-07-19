@@ -15,9 +15,12 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      upload_url: ${{ steps.release.outputs.upload_url }}
       version: ${{ steps.get_version.outputs.version }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Get version from tag
         id: get_version
         run: |
@@ -27,14 +30,33 @@ jobs:
             echo "version=dev-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+      - name: Check if release exists
+        id: check_release
+        run: |
+          if gh release view "${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release ${{ steps.get_version.outputs.version }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Release ${{ steps.get_version.outputs.version }} does not exist"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete existing release if it exists
+        if: steps.check_release.outputs.exists == 'true'
+        run: |
+          echo "Deleting existing release ${{ steps.get_version.outputs.version }}"
+          gh release delete "${{ steps.get_version.outputs.version }}" --yes --cleanup-tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        id: release
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
-          release_name: Release ${{ steps.get_version.outputs.version }}
+          name: Release ${{ steps.get_version.outputs.version }}
           body: |
             ## Changes in ${{ steps.get_version.outputs.version }}
             
@@ -63,6 +85,7 @@ jobs:
             
           draft: false
           prerelease: false
+          generate_release_notes: true
 
   build:
     name: Build for ${{ matrix.target }}
@@ -160,61 +183,54 @@ jobs:
           copy target\${{ matrix.target }}\release\rust-singler.exe ${{ matrix.name }}
 
       - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./${{ matrix.name }}
-          asset_name: ${{ matrix.name }}
-          asset_content_type: application/octet-stream
+          tag_name: ${{ needs.create-release.outputs.version }}
+          files: ./${{ matrix.name }}
 
   verify-binaries:
     name: Verify Built Binaries
     needs: [create-release, build]
     runs-on: ubuntu-latest
     steps:
-      - name: Download all release assets
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const { execSync } = require('child_process');
-            
-            // Get the release
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: '${{ needs.create-release.outputs.version }}'
-            });
-            
-            console.log(`Found release with ${release.data.assets.length} assets`);
-            
-            for (const asset of release.data.assets) {
-              console.log(`Downloading ${asset.name}...`);
-              const response = await github.rest.repos.getReleaseAsset({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                asset_id: asset.id,
-                headers: {
-                  Accept: 'application/octet-stream'
-                }
-              });
-              
-              fs.writeFileSync(asset.name, Buffer.from(response.data));
-              
-              // Check file size
-              const stats = fs.statSync(asset.name);
-              console.log(`${asset.name}: ${stats.size} bytes`);
-              
-              if (stats.size < 1000000) { // Less than 1MB might indicate an issue
-                console.warn(`Warning: ${asset.name} seems small (${stats.size} bytes)`);
-              }
-            }
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Test Linux binary
+      - name: Download and verify release assets
         run: |
-          if [ -f "rust-singler-linux-amd64" ]; then
-            chmod +x rust-singler-linux-amd64
-            ./rust-singler-linux-amd64 --version || echo "Binary test failed, but continuing..."
-          fi
+          echo "Downloading release assets for ${{ needs.create-release.outputs.version }}"
+          
+          # Download all assets from the release
+          gh release download "${{ needs.create-release.outputs.version }}" --dir ./downloads
+          
+          echo "Downloaded files:"
+          ls -la ./downloads/
+          
+          # Verify each binary
+          for file in ./downloads/*; do
+            if [[ -f "$file" ]]; then
+              filename=$(basename "$file")
+              size=$(stat -c%s "$file")
+              echo "📦 $filename: $size bytes"
+              
+              # Check if file is too small (might indicate build issue)
+              if (( size < 1000000 )); then
+                echo "⚠️  Warning: $filename seems small ($size bytes)"
+              else
+                echo "✅ $filename looks good"
+              fi
+              
+              # Make executable and test (only for Linux binaries on Linux runner)
+              if [[ "$filename" == *"linux-amd64"* ]]; then
+                echo "Testing $filename..."
+                chmod +x "$file"
+                if "$file" --version 2>/dev/null; then
+                  echo "✅ $filename version check passed"
+                else
+                  echo "⚠️  $filename version check failed (might be expected in CI)"
+                fi
+              fi
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
