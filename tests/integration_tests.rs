@@ -287,3 +287,35 @@ fn test_bundle_preserves_structure() {
     // Should preserve module structure (even if flattened)
     assert!(bundled_code.contains("Position"), "Should preserve Position type");
 }
+
+/// Test that documentation comments and test code are properly filtered
+#[test]
+fn test_filtering_docs_and_tests() {
+    let test_project_path = Path::new("test_project");
+    assert!(test_project_path.exists(), "test_project directory should exist");
+    
+    let bundled_code = bundle(test_project_path);
+    
+    
+    // Check that documentation comments are removed
+    assert!(!bundled_code.contains("//!"), "Bundle should not contain doc comments starting with //!");
+    assert!(!bundled_code.contains("///"), "Bundle should not contain doc comments starting with ///");
+    assert!(!bundled_code.contains("#[doc"), "Bundle should not contain #[doc attributes");
+    assert!(!bundled_code.contains("# [doc"), "Bundle should not contain # [doc attributes with spaces");
+    assert!(!bundled_code.contains("doc ="), "Bundle should not contain doc = in attributes");
+    
+    // Check that test modules and test functions are removed
+    assert!(!bundled_code.contains("#[test]"), "Bundle should not contain #[test] attributes");
+    assert!(!bundled_code.contains("#[cfg(test)]"), "Bundle should not contain #[cfg(test)] attributes");
+    assert!(!bundled_code.contains("mod tests"), "Bundle should not contain test modules");
+    
+    // Check that the actual code structures are still present
+    assert!(bundled_code.contains("struct TestStruct"), "Bundle should contain the TestStruct");
+    assert!(bundled_code.contains("trait TestTrait"), "Bundle should contain the TestTrait");
+    assert!(bundled_code.contains("fn documented_function"), "Bundle should contain the documented_function");
+    assert!(bundled_code.contains("fn test_method"), "Bundle should contain the test_method");
+    
+    // Verify that struct fields are present but without docs
+    assert!(bundled_code.contains("field1") && bundled_code.contains("i32"), "Bundle should contain field1: i32");
+    assert!(bundled_code.contains("field2") && bundled_code.contains("String"), "Bundle should contain field2: String");
+}

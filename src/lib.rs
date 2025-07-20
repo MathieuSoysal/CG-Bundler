@@ -59,6 +59,179 @@ impl<'a> Expander<'a> {
     fn expand_items(&self, items: &mut Vec<syn::Item>) {
         self.expand_extern_crate(items);
         self.expand_use_path(items);
+        self.filter_tests_and_docs(items);
+    }
+
+    fn filter_tests_and_docs(&self, items: &mut Vec<syn::Item>) {
+        items.retain(|item| {
+            // Remove items with #[cfg(test)] or #[test] attributes
+            !self.has_test_attribute(item)
+        });
+        
+        // Remove documentation comments from remaining items and their children
+        for item in items.iter_mut() {
+            self.remove_doc_attributes(item);
+            self.remove_doc_from_children(item);
+        }
+    }
+
+    fn is_doc_attribute(&self, attr: &syn::Attribute) -> bool {
+        // Check if it's a doc attribute by path
+        if attr.path().is_ident("doc") {
+            return true;
+        }
+        
+        // Also check the string representation for any remaining doc attributes
+        let attr_str = quote::quote!(#attr).to_string();
+        
+        // Filter out various forms of doc attributes
+        attr_str.starts_with("# [doc") || 
+        attr_str.starts_with("#[doc") || 
+        attr_str.contains("doc =")
+    }
+
+    fn remove_doc_from_children(&self, item: &mut syn::Item) {
+        match item {
+            syn::Item::Struct(item_struct) => {
+                // Remove docs from struct fields
+                if let syn::Fields::Named(fields) = &mut item_struct.fields {
+                    for field in &mut fields.named {
+                        field.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                    }
+                }
+                if let syn::Fields::Unnamed(fields) = &mut item_struct.fields {
+                    for field in &mut fields.unnamed {
+                        field.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                    }
+                }
+            }
+            syn::Item::Enum(item_enum) => {
+                // Remove docs from enum variants
+                for variant in &mut item_enum.variants {
+                    variant.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                    // Also remove docs from variant fields
+                    match &mut variant.fields {
+                        syn::Fields::Named(fields) => {
+                            for field in &mut fields.named {
+                                field.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                            }
+                        }
+                        syn::Fields::Unnamed(fields) => {
+                            for field in &mut fields.unnamed {
+                                field.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                            }
+                        }
+                        syn::Fields::Unit => {}
+                    }
+                }
+            }
+            syn::Item::Fn(item_fn) => {
+                // Remove docs from function parameters
+                for input in &mut item_fn.sig.inputs {
+                    if let syn::FnArg::Typed(pat_type) = input {
+                        pat_type.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                    }
+                }
+            }
+            syn::Item::Impl(item_impl) => {
+                // Remove docs from impl methods
+                for impl_item in &mut item_impl.items {
+                    match impl_item {
+                        syn::ImplItem::Fn(method) => {
+                            method.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                            // Remove docs from method parameters
+                            for input in &mut method.sig.inputs {
+                                if let syn::FnArg::Typed(pat_type) = input {
+                                    pat_type.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                                }
+                            }
+                        }
+                        syn::ImplItem::Const(const_item) => {
+                            const_item.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                        }
+                        syn::ImplItem::Type(type_item) => {
+                            type_item.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            syn::Item::Trait(item_trait) => {
+                // Remove docs from trait methods
+                for trait_item in &mut item_trait.items {
+                    match trait_item {
+                        syn::TraitItem::Fn(method) => {
+                            method.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                        }
+                        syn::TraitItem::Const(const_item) => {
+                            const_item.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                        }
+                        syn::TraitItem::Type(type_item) => {
+                            type_item.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            syn::Item::Mod(item_mod) => {
+                // Remove docs from inline module content
+                if let Some((_, ref mut mod_items)) = item_mod.content {
+                    for mod_item in mod_items {
+                        self.remove_doc_attributes(mod_item);
+                        self.remove_doc_from_children(mod_item);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn has_test_attribute(&self, item: &syn::Item) -> bool {
+        let attrs = match item {
+            syn::Item::Fn(item_fn) => &item_fn.attrs,
+            syn::Item::Mod(item_mod) => &item_mod.attrs,
+            syn::Item::Struct(item_struct) => &item_struct.attrs,
+            syn::Item::Enum(item_enum) => &item_enum.attrs,
+            syn::Item::Trait(item_trait) => &item_trait.attrs,
+            syn::Item::Impl(item_impl) => &item_impl.attrs,
+            _ => return false,
+        };
+
+        attrs.iter().any(|attr| {
+            // Check for #[test]
+            if attr.path().is_ident("test") {
+                return true;
+            }
+            
+            // Check for #[cfg(test)] - simplified approach for syn 2.0
+            if attr.path().is_ident("cfg") {
+                // Convert attribute to string and check if it contains "test"
+                let attr_str = quote::quote!(#attr).to_string();
+                return attr_str.contains("test");
+            }
+            
+            false
+        })
+    }
+
+    fn remove_doc_attributes(&self, item: &mut syn::Item) {
+        let attrs = match item {
+            syn::Item::Fn(item_fn) => &mut item_fn.attrs,
+            syn::Item::Mod(item_mod) => &mut item_mod.attrs,
+            syn::Item::Struct(item_struct) => &mut item_struct.attrs,
+            syn::Item::Enum(item_enum) => &mut item_enum.attrs,
+            syn::Item::Trait(item_trait) => &mut item_trait.attrs,
+            syn::Item::Impl(item_impl) => &mut item_impl.attrs,
+            syn::Item::Type(item_type) => &mut item_type.attrs,
+            syn::Item::Const(item_const) => &mut item_const.attrs,
+            syn::Item::Static(item_static) => &mut item_static.attrs,
+            syn::Item::Use(item_use) => &mut item_use.attrs,
+            syn::Item::ExternCrate(item_extern_crate) => &mut item_extern_crate.attrs,
+            _ => return,
+        };
+
+        // Remove doc comments (/// and //!) and #[doc = "..."] attributes
+        attrs.retain(|attr| !self.is_doc_attribute(attr));
     }
 
     fn expand_extern_crate(&self, items: &mut Vec<syn::Item>) {
@@ -108,10 +281,14 @@ impl<'a> Expander<'a> {
             .expect("mod not found");
         eprintln!("expanding mod {} in {}", name, base_path.to_str().unwrap());
         let mut file = syn::parse_file(&code).expect("failed to parse file");
-        Expander {
+        
+        // Create a new expander and apply filtering to the module content
+        let mut expander = Expander {
             base_path,
             crate_name: self.crate_name,
-        }.visit_file_mut(&mut file);
+        };
+        expander.visit_file_mut(&mut file);
+        
         item.content = Some((Default::default(), file.items));
     }
 
@@ -128,6 +305,9 @@ impl<'a> Expander<'a> {
 
 impl<'a> VisitMut for Expander<'a> {
     fn visit_file_mut(&mut self, file: &mut syn::File) {
+        // Remove doc comments from file level attributes
+        file.attrs.retain(|attr| !self.is_doc_attribute(attr));
+        
         for it in &mut file.attrs {
             self.visit_attribute_mut(it)
         }

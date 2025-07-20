@@ -41,10 +41,56 @@ pub mod game;
 pub mod io;
 pub mod utils;
 
+/// This is a public struct for demonstration
+/// It has documentation that should be filtered out
+pub struct TestStruct {
+    /// This field has documentation
+    pub field1: i32,
+    /// Another documented field
+    pub field2: String,
+}
+
+/// A documented function that should lose its docs
+pub fn documented_function() -> i32 {
+    42
+}
+
+/// A trait with documentation
+pub trait TestTrait {
+    /// A documented method
+    fn test_method(&self) -> bool;
+}
+
+impl TestTrait for TestStruct {
+    /// Implementation method with docs
+    fn test_method(&self) -> bool {
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_basic() {
+        assert_eq!(documented_function(), 42);
+    }
+
+    /// Test documentation that should be filtered
+    #[test]
+    fn test_with_docs() {
+        let s = TestStruct {
+            field1: 1,
+            field2: "test".to_string(),
+        };
+        assert!(s.test_method());
+    }
+}
+
 // Re-export commonly used types for convenience
 pub use actions::{Action, ActionFactory, ActionValidator, CommandHandler, MoveAndShootAction, MoveAndHunkerAction};
 pub use ai::{AgentStrategy, CombatStrategy, CoverStrategy, CoverEvaluator, ObjectiveStrategy};
 pub use crate::core::{Agent, GameError, GameResult, Position, TileType, constants};
 pub use game::{Game, GameRules, Grid, Tile, WoodenLeagueRules};
 pub use io::GameParser;
-pub use utils::{CollectionUtils, MathUtils, PriorityQueue};
