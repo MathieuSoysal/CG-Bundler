@@ -21,43 +21,43 @@ pub enum Commands {
         /// Path to the Cargo project directory
         #[arg(value_name = "PROJECT_PATH")]
         project_path: PathBuf,
-        
+
         /// Output file path (stdout if not specified)
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
-        
+
         /// Keep test code in the bundled output
         #[arg(long)]
         keep_tests: bool,
-        
+
         /// Keep documentation comments in the bundled output
         #[arg(long)]
         keep_docs: bool,
-        
+
         /// Disable module expansion (keep module declarations)
         #[arg(long)]
         no_expand_modules: bool,
-        
+
         /// Pretty print the output (format with rustfmt if available)
         #[arg(long)]
         pretty: bool,
-        
+
         /// Verbose output
         #[arg(short, long)]
         verbose: bool,
     },
-    
+
     /// Validate that a project can be bundled without errors
     Validate {
         /// Path to the Cargo project directory
         #[arg(value_name = "PROJECT_PATH")]
         project_path: PathBuf,
-        
+
         /// Verbose output
         #[arg(short, long)]
         verbose: bool,
     },
-    
+
     /// Show information about a Cargo project structure
     Info {
         /// Path to the Cargo project directory
@@ -123,11 +123,11 @@ mod tests {
             "--output",
             "output.rs",
             "--keep-tests",
-            "--verbose"
+            "--verbose",
         ];
-        
+
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Commands::Bundle {
                 project_path,
@@ -148,11 +148,14 @@ mod tests {
     #[test]
     fn test_validate_command_parsing() {
         let args = vec!["rust-singler", "validate", "/path/to/project", "--verbose"];
-        
+
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
-            Commands::Validate { project_path, verbose } => {
+            Commands::Validate {
+                project_path,
+                verbose,
+            } => {
                 assert_eq!(project_path, PathBuf::from("/path/to/project"));
                 assert!(verbose);
             }
@@ -163,9 +166,9 @@ mod tests {
     #[test]
     fn test_info_command_parsing() {
         let args = vec!["rust-singler", "info", "/path/to/project"];
-        
+
         let cli = Cli::try_parse_from(args).unwrap();
-        
+
         match cli.command {
             Commands::Info { project_path } => {
                 assert_eq!(project_path, PathBuf::from("/path/to/project"));
@@ -185,24 +188,24 @@ mod tests {
             pretty: false,
             verbose: false,
         };
-        
+
         let config = bundle_cmd.get_transform_config().unwrap();
         assert!(!config.remove_tests); // keep_tests = true
-        assert!(config.remove_docs);   // keep_docs = false
+        assert!(config.remove_docs); // keep_docs = false
         assert!(!config.expand_modules); // no_expand_modules = true
-        
+
         let validate_cmd = Commands::Validate {
             project_path: PathBuf::from("/test"),
             verbose: false,
         };
-        
+
         assert!(validate_cmd.get_transform_config().is_none());
     }
 
     #[test]
     fn test_project_path_extraction() {
         let test_path = PathBuf::from("/test/path");
-        
+
         let bundle_cmd = Commands::Bundle {
             project_path: test_path.clone(),
             output: None,
@@ -212,7 +215,7 @@ mod tests {
             pretty: false,
             verbose: false,
         };
-        
+
         assert_eq!(bundle_cmd.project_path(), &test_path);
     }
 
@@ -227,9 +230,9 @@ mod tests {
             pretty: false,
             verbose: true,
         };
-        
+
         assert!(verbose_bundle.is_verbose());
-        
+
         let non_verbose_bundle = Commands::Bundle {
             project_path: PathBuf::from("/test"),
             output: None,
@@ -239,7 +242,7 @@ mod tests {
             pretty: false,
             verbose: false,
         };
-        
+
         assert!(!non_verbose_bundle.is_verbose());
     }
 }

@@ -1,7 +1,7 @@
-use syn::punctuated::Punctuated;
-use syn::visit_mut::VisitMut;
 use std::mem;
 use std::path::Path;
+use syn::punctuated::Punctuated;
+use syn::visit_mut::VisitMut;
 
 use crate::error::{BundlerError, Result};
 use crate::file_manager::FileManager;
@@ -46,13 +46,13 @@ impl<'a> CodeTransformer<'a> {
         if self.config.remove_docs {
             self.remove_file_level_docs(file);
         }
-        
+
         self.expand_items(&mut file.items)?;
-        
+
         for item in &mut file.items {
             self.visit_item_mut(item);
         }
-        
+
         Ok(())
     }
 
@@ -62,11 +62,11 @@ impl<'a> CodeTransformer<'a> {
             self.expand_extern_crate(items)?;
             self.expand_use_path(items);
         }
-        
+
         if self.config.remove_tests || self.config.remove_docs {
             self.filter_tests_and_docs(items);
         }
-        
+
         Ok(())
     }
 
@@ -85,7 +85,7 @@ impl<'a> CodeTransformer<'a> {
             }
             true
         });
-        
+
         if self.config.remove_docs {
             for item in items.iter_mut() {
                 self.remove_doc_attributes(item);
@@ -99,11 +99,11 @@ impl<'a> CodeTransformer<'a> {
         if attr.path().is_ident("doc") {
             return true;
         }
-        
+
         let attr_str = quote::quote!(#attr).to_string();
-        attr_str.starts_with("# [doc") || 
-        attr_str.starts_with("#[doc") || 
-        attr_str.contains("doc =")
+        attr_str.starts_with("# [doc")
+            || attr_str.starts_with("#[doc")
+            || attr_str.contains("doc =")
     }
 
     /// Remove documentation from child elements
@@ -161,7 +161,10 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Remove documentation from function inputs
-    fn remove_docs_from_fn_inputs(&self, inputs: &mut syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>) {
+    fn remove_docs_from_fn_inputs(
+        &self,
+        inputs: &mut syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    ) {
         for input in inputs {
             if let syn::FnArg::Typed(pat_type) = input {
                 pat_type.attrs.retain(|attr| !self.is_doc_attribute(attr));
@@ -218,12 +221,12 @@ impl<'a> CodeTransformer<'a> {
             if attr.path().is_ident("test") {
                 return true;
             }
-            
+
             if attr.path().is_ident("cfg") {
                 let attr_str = quote::quote!(#attr).to_string();
                 return attr_str.contains("test");
             }
-            
+
             false
         })
     }
@@ -253,19 +256,23 @@ impl<'a> CodeTransformer<'a> {
         let mut new_items = vec![];
         for item in items.drain(..) {
             if self.is_extern_crate(&item, self.crate_name) {
-                eprintln!("Expanding crate {} in {}", self.crate_name, self.base_path.display());
+                eprintln!(
+                    "Expanding crate {} in {}",
+                    self.crate_name,
+                    self.base_path.display()
+                );
                 let lib_path = self.base_path.join("lib.rs");
-                let code = FileManager::read_file(&lib_path)
-                    .map_err(|_| BundlerError::ProjectStructure {
+                let code = FileManager::read_file(&lib_path).map_err(|_| {
+                    BundlerError::ProjectStructure {
                         message: "Failed to read lib.rs for extern crate expansion".to_string(),
-                    })?;
-                
-                let lib = syn::parse_file(&code)
-                    .map_err(|e| BundlerError::Parsing {
-                        message: format!("Failed to parse lib.rs: {}", e),
-                        file_path: Some(lib_path),
-                    })?;
-                
+                    }
+                })?;
+
+                let lib = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
+                    message: format!("Failed to parse lib.rs: {}", e),
+                    file_path: Some(lib_path),
+                })?;
+
                 new_items.extend(lib.items);
             } else {
                 new_items.push(item);
@@ -291,27 +298,26 @@ impl<'a> CodeTransformer<'a> {
         if item.content.is_some() {
             return Ok(());
         }
-        
+
         let name = item.ident.to_string();
         let (base_path, code) = FileManager::find_module_file(self.base_path, &name)?;
-        
-        let mut file = syn::parse_file(&code)
-            .map_err(|e| BundlerError::Parsing {
-                message: format!("Failed to parse module file: {}", e),
-                file_path: Some(base_path.join(format!("{}.rs", name))),
-            })?;
+
+        let mut file = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
+            message: format!("Failed to parse module file: {}", e),
+            file_path: Some(base_path.join(format!("{}.rs", name))),
+        })?;
 
         // Use the original config for expansion to ensure consistent behavior
         let mut expander = CodeTransformer::new(&base_path, self.crate_name, self.config.clone());
-        
+
         // Apply full transformation to the module content
         expander.expand_items(&mut file.items)?;
-        
+
         // Also visit each item to handle nested modules with the correct base path
         for item in &mut file.items {
             expander.visit_item_mut(item);
         }
-        
+
         item.content = Some((Default::default(), file.items));
         Ok(())
     }
@@ -365,15 +371,15 @@ impl<'a> VisitMut for CodeTransformer<'a> {
         if self.config.remove_docs {
             file.attrs.retain(|attr| !self.is_doc_attribute(attr));
         }
-        
+
         for attr in &mut file.attrs {
             self.visit_attribute_mut(attr);
         }
-        
+
         if let Err(e) = self.expand_items(&mut file.items) {
             eprintln!("Warning: Failed to expand items: {}", e);
         }
-        
+
         for item in &mut file.items {
             self.visit_item_mut(item);
         }
@@ -385,11 +391,11 @@ impl<'a> VisitMut for CodeTransformer<'a> {
         }
         self.visit_visibility_mut(&mut item.vis);
         self.visit_ident_mut(&mut item.ident);
-        
+
         if let Err(e) = self.expand_mods(item) {
             eprintln!("Warning: Failed to expand module {}: {}", item.ident, e);
         }
-        
+
         // Note: We don't recursively visit the expanded content here because
         // expand_mods already handles the full transformation of the module content
         // with the correct base path context
@@ -420,12 +426,13 @@ mod tests {
     #[test]
     fn test_is_doc_attribute() {
         let base_path = PathBuf::from("/tmp");
-        let transformer = CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
-        
+        let transformer =
+            CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
+
         // Test with a doc attribute
         let doc_attr: syn::Attribute = syn::parse_quote!(#[doc = "test"]);
         assert!(transformer.is_doc_attribute(&doc_attr));
-        
+
         // Test with a non-doc attribute
         let non_doc_attr: syn::Attribute = syn::parse_quote!(#[test]);
         assert!(!transformer.is_doc_attribute(&non_doc_attr));
@@ -434,15 +441,16 @@ mod tests {
     #[test]
     fn test_has_test_attribute() {
         let base_path = PathBuf::from("/tmp");
-        let transformer = CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
-        
+        let transformer =
+            CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
+
         // Test function with test attribute
         let test_fn: syn::Item = syn::parse_quote! {
             #[test]
             fn test_function() {}
         };
         assert!(transformer.has_test_attribute(&test_fn));
-        
+
         // Test regular function
         let regular_fn: syn::Item = syn::parse_quote! {
             fn regular_function() {}
@@ -453,17 +461,18 @@ mod tests {
     #[test]
     fn test_is_extern_crate() {
         let base_path = PathBuf::from("/tmp");
-        let transformer = CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
-        
+        let transformer =
+            CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
+
         // Test extern crate with matching name
         let extern_crate_item: syn::Item = syn::parse_quote! {
             extern crate test_crate;
         };
         assert!(transformer.is_extern_crate(&extern_crate_item, "test_crate"));
-        
+
         // Test extern crate with different name
         assert!(!transformer.is_extern_crate(&extern_crate_item, "other_crate"));
-        
+
         // Test non-extern-crate item
         let fn_item: syn::Item = syn::parse_quote! {
             fn test() {}

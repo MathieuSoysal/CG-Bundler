@@ -21,19 +21,13 @@ pub enum BundlerError {
         file_path: Option<PathBuf>,
     },
     /// Project structure related errors
-    ProjectStructure {
-        message: String,
-    },
+    ProjectStructure { message: String },
     /// Multiple binary targets found (not supported)
-    MultipleBinaryTargets {
-        target_count: usize,
-    },
+    MultipleBinaryTargets { target_count: usize },
     /// No binary target found
     NoBinaryTarget,
     /// Multiple library targets found (not supported)
-    MultipleLibraryTargets {
-        target_count: usize,
-    },
+    MultipleLibraryTargets { target_count: usize },
 }
 
 impl fmt::Display for BundlerError {
@@ -60,13 +54,21 @@ impl fmt::Display for BundlerError {
                 write!(f, "Project structure error: {}", message)
             }
             BundlerError::MultipleBinaryTargets { target_count } => {
-                write!(f, "Multiple binary targets found ({}). Only single binary target is supported.", target_count)
+                write!(
+                    f,
+                    "Multiple binary targets found ({}). Only single binary target is supported.",
+                    target_count
+                )
             }
             BundlerError::NoBinaryTarget => {
                 write!(f, "No binary target found in the project")
             }
             BundlerError::MultipleLibraryTargets { target_count } => {
-                write!(f, "Multiple library targets found ({}). Only single library target is supported.", target_count)
+                write!(
+                    f,
+                    "Multiple library targets found ({}). Only single library target is supported.",
+                    target_count
+                )
             }
         }
     }
@@ -76,7 +78,10 @@ impl std::error::Error for BundlerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             BundlerError::Io { source, .. } => Some(source),
-            BundlerError::CargoMetadata { source: Some(source), .. } => Some(source),
+            BundlerError::CargoMetadata {
+                source: Some(source),
+                ..
+            } => Some(source),
             _ => None,
         }
     }

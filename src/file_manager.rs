@@ -12,17 +12,18 @@ impl FileManager {
     pub fn read_file<P: AsRef<Path>>(path: P) -> Result<String> {
         let path = path.as_ref();
         let mut buf = String::new();
-        
+
         let mut file = File::open(path).map_err(|e| BundlerError::Io {
             source: e,
             path: Some(path.to_path_buf()),
         })?;
-        
-        file.read_to_string(&mut buf).map_err(|e| BundlerError::Io {
-            source: e,
-            path: Some(path.to_path_buf()),
-        })?;
-        
+
+        file.read_to_string(&mut buf)
+            .map_err(|e| BundlerError::Io {
+                source: e,
+                path: Some(path.to_path_buf()),
+            })?;
+
         Ok(buf)
     }
 
@@ -41,9 +42,17 @@ impl FileManager {
     pub fn find_module_file(base_path: &Path, module_name: &str) -> Result<(PathBuf, String)> {
         let possible_locations = vec![
             // Look for module_name.rs in base_path, submodules will be in base_path/module_name/
-            (base_path.to_path_buf(), format!("{}.rs", module_name), base_path.join(module_name)),
+            (
+                base_path.to_path_buf(),
+                format!("{}.rs", module_name),
+                base_path.join(module_name),
+            ),
             // Look for mod.rs in base_path/module_name/, submodules will be in base_path/module_name/
-            (base_path.join(module_name), "mod.rs".to_string(), base_path.join(module_name)),
+            (
+                base_path.join(module_name),
+                "mod.rs".to_string(),
+                base_path.join(module_name),
+            ),
         ];
 
         for (file_base, file_name, submodule_base) in possible_locations {
@@ -70,9 +79,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.txt");
         let content = "Hello, World!";
-        
+
         fs::write(&file_path, content).unwrap();
-        
+
         let result = FileManager::read_file(&file_path).unwrap();
         assert_eq!(result, content);
     }
@@ -87,9 +96,9 @@ mod tests {
     fn test_file_exists() {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.txt");
-        
+
         assert!(!FileManager::file_exists(&file_path));
-        
+
         fs::write(&file_path, "content").unwrap();
         assert!(FileManager::file_exists(&file_path));
     }
@@ -98,13 +107,16 @@ mod tests {
     fn test_try_read_file() {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.txt");
-        
+
         // File doesn't exist
         assert!(FileManager::try_read_file(&file_path).is_none());
-        
+
         // File exists
         let content = "test content";
         fs::write(&file_path, content).unwrap();
-        assert_eq!(FileManager::try_read_file(&file_path), Some(content.to_string()));
+        assert_eq!(
+            FileManager::try_read_file(&file_path),
+            Some(content.to_string())
+        );
     }
 }
