@@ -1,0 +1,16 @@
+[package]
+name = "codingame_summer_challenge_2025"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "codingame_summer_challenge_2025"
+path = "src/main.rs"
+
+[lib]
+name = "codingame_summer_challenge_2025"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+thiserror = "1.0"
