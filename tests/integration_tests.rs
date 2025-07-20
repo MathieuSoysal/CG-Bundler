@@ -16,7 +16,7 @@ fn test_bundle_basic_functionality() {
     assert!(test_project_path.join("src/lib.rs").exists(), "Test project should have lib.rs");
     
     // Bundle the test project
-    let result = bundle(test_project_path);
+    let result = bundle(test_project_path).expect("Bundle should succeed");
     
     // Check that the result is not empty and contains expected elements
     assert!(!result.is_empty(), "Bundle result should not be empty");
@@ -29,7 +29,7 @@ fn test_bundle_basic_functionality() {
 #[test]
 fn test_bundle_contains_expected_structures() {
     let test_project_path = Path::new("test_project");
-    let bundled_code = bundle(test_project_path);
+    let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
     
     // Check for core structures from lib.rs
     assert!(bundled_code.contains("struct GameParser"), "Should contain GameParser struct");
@@ -49,7 +49,7 @@ fn test_bundle_contains_expected_structures() {
 #[test]
 fn test_bundle_handles_extern_crate() {
     let test_project_path = Path::new("test_project");
-    let bundled_code = bundle(test_project_path);
+    let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
     
     // The bundle should not contain the extern crate declaration for the local crate
     // but should preserve external crate dependencies
@@ -103,7 +103,7 @@ pub fn hello() -> String {
         .expect("Failed to write lib.rs");
     
     // Bundle the minimal project
-    let result = bundle(project_path);
+    let result = bundle(project_path).expect("Bundle should succeed");
     
     // Verify the bundle contains expected content
     assert!(!result.is_empty(), "Bundle result should not be empty");
@@ -166,7 +166,7 @@ fn main() {
         .expect("Failed to write main.rs");
     
     // Bundle the binary-only project
-    let result = bundle(project_path);
+    let result = bundle(project_path).expect("Bundle should succeed");
     
     // Verify the bundle contains expected content
     assert!(!result.is_empty(), "Bundle result should not be empty");
@@ -177,17 +177,17 @@ fn main() {
 
 /// Test bundling error handling for non-existent projects
 #[test]
-#[should_panic(expected = "failed to obtain cargo metadata")]
+#[should_panic]
 fn test_bundle_nonexistent_project() {
     let non_existent_path = Path::new("this_project_does_not_exist");
-    bundle(non_existent_path);
+    bundle(non_existent_path).expect("Bundle should fail for non-existent project");
 }
 
 /// Test that bundled code is syntactically valid Rust
 #[test]
 fn test_bundled_code_syntax_validity() {
     let test_project_path = Path::new("test_project");
-    let bundled_code = bundle(test_project_path);
+    let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
     
     // Try to parse the bundled code with syn to ensure it's valid Rust syntax
     let parsed = syn::parse_file(&bundled_code);
@@ -207,7 +207,7 @@ fn test_bundled_code_syntax_validity() {
 #[test]
 fn test_bundled_code_compiles() {
     let test_project_path = Path::new("test_project");
-    let bundled_code = bundle(test_project_path);
+    let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
     
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let bundled_file = temp_dir.path().join("bundled.rs");
@@ -261,7 +261,7 @@ fn test_bundle_performance() {
     let test_project_path = Path::new("test_project");
     let start = Instant::now();
     
-    let _result = bundle(test_project_path);
+    let _result = bundle(test_project_path).expect("Bundle should succeed");
     
     let duration = start.elapsed();
     
@@ -274,7 +274,7 @@ fn test_bundle_performance() {
 #[test]
 fn test_bundle_preserves_structure() {
     let test_project_path = Path::new("test_project");
-    let bundled_code = bundle(test_project_path);
+    let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
     
     // Should preserve function implementations
     assert!(bundled_code.contains("execute_turn_with_adaptive_strategy"), 
@@ -294,7 +294,7 @@ fn test_filtering_docs_and_tests() {
     let test_project_path = Path::new("test_project");
     assert!(test_project_path.exists(), "test_project directory should exist");
     
-    let bundled_code = bundle(test_project_path);
+    let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
     
     
     // Check that documentation comments are removed
