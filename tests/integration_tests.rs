@@ -8,22 +8,46 @@ use tempfile::TempDir;
 #[test]
 fn test_bundle_basic_functionality() {
     let test_project_path = Path::new("test_project");
-    
+
     // Ensure the test project exists and has the expected structure
-    assert!(test_project_path.exists(), "Test project directory should exist");
-    assert!(test_project_path.join("Cargo.toml").exists(), "Test project should have Cargo.toml");
-    assert!(test_project_path.join("src").exists(), "Test project should have src directory");
-    assert!(test_project_path.join("src/main.rs").exists(), "Test project should have main.rs");
-    assert!(test_project_path.join("src/lib.rs").exists(), "Test project should have lib.rs");
-    
+    assert!(
+        test_project_path.exists(),
+        "Test project directory should exist"
+    );
+    assert!(
+        test_project_path.join("Cargo.toml").exists(),
+        "Test project should have Cargo.toml"
+    );
+    assert!(
+        test_project_path.join("src").exists(),
+        "Test project should have src directory"
+    );
+    assert!(
+        test_project_path.join("src/main.rs").exists(),
+        "Test project should have main.rs"
+    );
+    assert!(
+        test_project_path.join("src/lib.rs").exists(),
+        "Test project should have lib.rs"
+    );
+
     // Bundle the test project
     let result = bundle(test_project_path).expect("Bundle should succeed");
-    
+
     // Check that the result is not empty and contains expected elements
     assert!(!result.is_empty(), "Bundle result should not be empty");
-    assert!(result.contains("fn main"), "Bundle should contain main function");
-    assert!(result.contains("GameParser"), "Bundle should contain GameParser");
-    assert!(result.contains("struct Game"), "Bundle should contain Game struct");
+    assert!(
+        result.contains("fn main"),
+        "Bundle should contain main function"
+    );
+    assert!(
+        result.contains("GameParser"),
+        "Bundle should contain GameParser"
+    );
+    assert!(
+        result.contains("struct Game"),
+        "Bundle should contain Game struct"
+    );
 }
 
 /// Test that the bundled code contains all expected structures
@@ -31,19 +55,40 @@ fn test_bundle_basic_functionality() {
 fn test_bundle_contains_expected_structures() {
     let test_project_path = Path::new("test_project");
     let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
-    
+
     // Check for core structures from lib.rs
-    assert!(bundled_code.contains("struct GameParser"), "Should contain GameParser struct");
-    assert!(bundled_code.contains("struct Game"), "Should contain Game struct");
-    assert!(bundled_code.contains("struct Agent"), "Should contain Agent struct");
-    assert!(bundled_code.contains("struct Position"), "Should contain Position struct");
-    
+    assert!(
+        bundled_code.contains("struct GameParser"),
+        "Should contain GameParser struct"
+    );
+    assert!(
+        bundled_code.contains("struct Game"),
+        "Should contain Game struct"
+    );
+    assert!(
+        bundled_code.contains("struct Agent"),
+        "Should contain Agent struct"
+    );
+    assert!(
+        bundled_code.contains("struct Position"),
+        "Should contain Position struct"
+    );
+
     // Check for key functions
-    assert!(bundled_code.contains("parse_initialization"), "Should contain parse_initialization function");
-    assert!(bundled_code.contains("execute_turn_with_adaptive_strategy"), "Should contain strategy function");
-    
+    assert!(
+        bundled_code.contains("parse_initialization"),
+        "Should contain parse_initialization function"
+    );
+    assert!(
+        bundled_code.contains("execute_turn_with_adaptive_strategy"),
+        "Should contain strategy function"
+    );
+
     // Check for the core module
-    assert!(bundled_code.contains("mod core"), "Should contain core module");
+    assert!(
+        bundled_code.contains("mod core"),
+        "Should contain core module"
+    );
 }
 
 /// Test that extern crate declarations are properly handled
@@ -51,14 +96,19 @@ fn test_bundle_contains_expected_structures() {
 fn test_bundle_handles_extern_crate() {
     let test_project_path = Path::new("test_project");
     let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
-    
+
     // The bundle should not contain the extern crate declaration for the local crate
     // but should preserve external crate dependencies
-    assert!(!bundled_code.contains("extern crate codingame_summer_challenge_2025"), 
-            "Should remove local extern crate declarations");
-    
+    assert!(
+        !bundled_code.contains("extern crate codingame_summer_challenge_2025"),
+        "Should remove local extern crate declarations"
+    );
+
     // Should still contain the main function logic
-    assert!(bundled_code.contains("fn main"), "Should preserve main function");
+    assert!(
+        bundled_code.contains("fn main"),
+        "Should preserve main function"
+    );
 }
 
 /// Test bundling with a minimal temporary project
@@ -66,7 +116,7 @@ fn test_bundle_handles_extern_crate() {
 fn test_bundle_minimal_project() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     // Create a minimal Cargo.toml
     let cargo_toml = r#"
 [package]
@@ -78,38 +128,37 @@ edition = "2021"
 name = "minimal_test"
 path = "src/main.rs"
 "#;
-    fs::write(project_path.join("Cargo.toml"), cargo_toml)
-        .expect("Failed to write Cargo.toml");
-    
+    fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
+
     // Create src directory
-    fs::create_dir(project_path.join("src"))
-        .expect("Failed to create src directory");
-    
+    fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
+
     // Create a minimal main.rs
     let main_rs = r#"
 fn main() {
     println!("Hello, world!");
 }
 "#;
-    fs::write(project_path.join("src/main.rs"), main_rs)
-        .expect("Failed to write main.rs");
-    
+    fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
+
     // Create a minimal lib.rs
     let lib_rs = r#"
 pub fn hello() -> String {
     "Hello from lib!".to_string()
 }
 "#;
-    fs::write(project_path.join("src/lib.rs"), lib_rs)
-        .expect("Failed to write lib.rs");
-    
+    fs::write(project_path.join("src/lib.rs"), lib_rs).expect("Failed to write lib.rs");
+
     // Bundle the minimal project
     let result = bundle(project_path).expect("Bundle should succeed");
-    
+
     // Verify the bundle contains expected content
     assert!(!result.is_empty(), "Bundle result should not be empty");
     assert!(result.contains("fn main"), "Should contain main function");
-    assert!(result.contains("Hello, world!"), "Should contain main function content");
+    assert!(
+        result.contains("Hello, world!"),
+        "Should contain main function content"
+    );
 }
 
 /// Test that the bundle function handles projects without lib.rs
@@ -117,7 +166,7 @@ pub fn hello() -> String {
 fn test_bundle_binary_only_project() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     // Create a minimal Cargo.toml for binary-only project
     let cargo_toml = r#"
 [package]
@@ -129,13 +178,11 @@ edition = "2021"
 name = "binary_only"
 path = "src/main.rs"
 "#;
-    fs::write(project_path.join("Cargo.toml"), cargo_toml)
-        .expect("Failed to write Cargo.toml");
-    
+    fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
+
     // Create src directory
-    fs::create_dir(project_path.join("src"))
-        .expect("Failed to create src directory");
-    
+    fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
+
     // Create a standalone main.rs with all code inline
     let main_rs = r#"
 struct Calculator {
@@ -163,17 +210,22 @@ fn main() {
     println!("Result: {}", result);
 }
 "#;
-    fs::write(project_path.join("src/main.rs"), main_rs)
-        .expect("Failed to write main.rs");
-    
+    fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
+
     // Bundle the binary-only project
     let result = bundle(project_path).expect("Bundle should succeed");
-    
+
     // Verify the bundle contains expected content
     assert!(!result.is_empty(), "Bundle result should not be empty");
-    assert!(result.contains("struct Calculator"), "Should contain Calculator struct");
+    assert!(
+        result.contains("struct Calculator"),
+        "Should contain Calculator struct"
+    );
     assert!(result.contains("fn main"), "Should contain main function");
-    assert!(result.contains("Result:"), "Should contain main function logic");
+    assert!(
+        result.contains("Result:"),
+        "Should contain main function logic"
+    );
 }
 
 /// Test bundling error handling for non-existent projects
@@ -189,10 +241,10 @@ fn test_bundle_nonexistent_project() {
 fn test_bundled_code_syntax_validity() {
     let test_project_path = Path::new("test_project");
     let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
-    
+
     // Try to parse the bundled code with syn to ensure it's valid Rust syntax
     let parsed = syn::parse_file(&bundled_code);
-    
+
     match parsed {
         Ok(_) => {
             // Code is syntactically valid
@@ -209,14 +261,13 @@ fn test_bundled_code_syntax_validity() {
 fn test_bundled_code_compiles() {
     let test_project_path = Path::new("test_project");
     let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
-    
+
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let bundled_file = temp_dir.path().join("bundled.rs");
-    
+
     // Write bundled code to temporary file
-    fs::write(&bundled_file, &bundled_code)
-        .expect("Failed to write bundled code to temp file");
-    
+    fs::write(&bundled_file, &bundled_code).expect("Failed to write bundled code to temp file");
+
     // Try to compile with rustc (just check syntax by trying to compile)
     let temp_output = temp_dir.path().join("compiled_output");
     let output = std::process::Command::new("rustc")
@@ -225,21 +276,24 @@ fn test_bundled_code_compiles() {
         .arg("-o")
         .arg(&temp_output)
         .output();
-    
+
     match output {
         Ok(result) => {
             if !result.status.success() {
                 let stderr = String::from_utf8_lossy(&result.stderr);
                 // Allow certain expected errors from module expansion
                 let allowed_errors = [
-                    "unresolved import",  // Expected when expanding incomplete module structures
-                    "cannot find", // Expected when modules reference missing items
+                    "unresolved import", // Expected when expanding incomplete module structures
+                    "cannot find",       // Expected when modules reference missing items
                 ];
-                
+
                 let has_allowed_error = allowed_errors.iter().any(|&error| stderr.contains(error));
-                
+
                 if !has_allowed_error {
-                    panic!("Bundled code failed to compile with unexpected errors:\n{}", stderr);
+                    panic!(
+                        "Bundled code failed to compile with unexpected errors:\n{}",
+                        stderr
+                    );
                 }
                 // If it's just import errors from missing modules, that's expected for a complex test project
                 eprintln!("Note: Bundle compilation failed with expected module errors (this is normal for complex projects)");
@@ -258,17 +312,20 @@ fn test_bundled_code_compiles() {
 #[test]
 fn test_bundle_performance() {
     use std::time::Instant;
-    
+
     let test_project_path = Path::new("test_project");
     let start = Instant::now();
-    
+
     let _result = bundle(test_project_path).expect("Bundle should succeed");
-    
+
     let duration = start.elapsed();
-    
+
     // Bundle should complete within 5 seconds for a small test project
-    assert!(duration.as_secs() < 5, 
-            "Bundle operation took too long: {:?}", duration);
+    assert!(
+        duration.as_secs() < 5,
+        "Bundle operation took too long: {:?}",
+        duration
+    );
 }
 
 /// Test that the bundle preserves important code comments and structure
@@ -276,49 +333,102 @@ fn test_bundle_performance() {
 fn test_bundle_preserves_structure() {
     let test_project_path = Path::new("test_project");
     let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
-    
+
     // Should preserve function implementations
-    assert!(bundled_code.contains("execute_turn_with_adaptive_strategy"), 
-            "Should preserve function names");
-    
+    assert!(
+        bundled_code.contains("execute_turn_with_adaptive_strategy"),
+        "Should preserve function names"
+    );
+
     // Should preserve struct definitions properly (allow for expansion creating multiple definitions)
     let game_struct_count = bundled_code.matches("struct Game").count();
-    assert!(game_struct_count >= 1, "Should have at least one Game struct definition, found {}", game_struct_count);
-    
+    assert!(
+        game_struct_count >= 1,
+        "Should have at least one Game struct definition, found {}",
+        game_struct_count
+    );
+
     // Should preserve module structure (even if flattened)
-    assert!(bundled_code.contains("Position"), "Should preserve Position type");
+    assert!(
+        bundled_code.contains("Position"),
+        "Should preserve Position type"
+    );
 }
 
 /// Test that documentation comments and test code are properly filtered
 #[test]
 fn test_filtering_docs_and_tests() {
     let test_project_path = Path::new("test_project");
-    assert!(test_project_path.exists(), "test_project directory should exist");
-    
+    assert!(
+        test_project_path.exists(),
+        "test_project directory should exist"
+    );
+
     let bundled_code = bundle(test_project_path).expect("Bundle should succeed");
-    
-    
+
     // Check that documentation comments are removed
-    assert!(!bundled_code.contains("//!"), "Bundle should not contain doc comments starting with //!");
-    assert!(!bundled_code.contains("///"), "Bundle should not contain doc comments starting with ///");
-    assert!(!bundled_code.contains("#[doc"), "Bundle should not contain #[doc attributes");
-    assert!(!bundled_code.contains("# [doc"), "Bundle should not contain # [doc attributes with spaces");
-    assert!(!bundled_code.contains("doc ="), "Bundle should not contain doc = in attributes");
-    
+    assert!(
+        !bundled_code.contains("//!"),
+        "Bundle should not contain doc comments starting with //!"
+    );
+    assert!(
+        !bundled_code.contains("///"),
+        "Bundle should not contain doc comments starting with ///"
+    );
+    assert!(
+        !bundled_code.contains("#[doc"),
+        "Bundle should not contain #[doc attributes"
+    );
+    assert!(
+        !bundled_code.contains("# [doc"),
+        "Bundle should not contain # [doc attributes with spaces"
+    );
+    assert!(
+        !bundled_code.contains("doc ="),
+        "Bundle should not contain doc = in attributes"
+    );
+
     // Check that test modules and test functions are removed
-    assert!(!bundled_code.contains("#[test]"), "Bundle should not contain #[test] attributes");
-    assert!(!bundled_code.contains("#[cfg(test)]"), "Bundle should not contain #[cfg(test)] attributes");
-    assert!(!bundled_code.contains("mod tests"), "Bundle should not contain test modules");
-    
+    assert!(
+        !bundled_code.contains("#[test]"),
+        "Bundle should not contain #[test] attributes"
+    );
+    assert!(
+        !bundled_code.contains("#[cfg(test)]"),
+        "Bundle should not contain #[cfg(test)] attributes"
+    );
+    assert!(
+        !bundled_code.contains("mod tests"),
+        "Bundle should not contain test modules"
+    );
+
     // Check that the actual code structures are still present
-    assert!(bundled_code.contains("struct TestStruct"), "Bundle should contain the TestStruct");
-    assert!(bundled_code.contains("trait TestTrait"), "Bundle should contain the TestTrait");
-    assert!(bundled_code.contains("fn documented_function"), "Bundle should contain the documented_function");
-    assert!(bundled_code.contains("fn test_method"), "Bundle should contain the test_method");
-    
+    assert!(
+        bundled_code.contains("struct TestStruct"),
+        "Bundle should contain the TestStruct"
+    );
+    assert!(
+        bundled_code.contains("trait TestTrait"),
+        "Bundle should contain the TestTrait"
+    );
+    assert!(
+        bundled_code.contains("fn documented_function"),
+        "Bundle should contain the documented_function"
+    );
+    assert!(
+        bundled_code.contains("fn test_method"),
+        "Bundle should contain the test_method"
+    );
+
     // Verify that struct fields are present but without docs
-    assert!(bundled_code.contains("field1") && bundled_code.contains("i32"), "Bundle should contain field1: i32");
-    assert!(bundled_code.contains("field2") && bundled_code.contains("String"), "Bundle should contain field2: String");
+    assert!(
+        bundled_code.contains("field1") && bundled_code.contains("i32"),
+        "Bundle should contain field1: i32"
+    );
+    assert!(
+        bundled_code.contains("field2") && bundled_code.contains("String"),
+        "Bundle should contain field2: String"
+    );
 }
 
 // ==============================================
@@ -335,13 +445,15 @@ fn test_bundler_with_keep_tests_config() {
         minify: false,
         aggressive_minify: false,
     };
-    
+
     let bundler = Bundler::with_config(config);
     let test_project_path = Path::new("test_project");
-    let bundled_code = bundler.bundle(test_project_path).expect("Bundle should succeed");
-    
+    let bundled_code = bundler
+        .bundle(test_project_path)
+        .expect("Bundle should succeed");
+
     // Should contain test code when configured to keep tests
-    // Note: This might not show up if test_project doesn't have tests, 
+    // Note: This might not show up if test_project doesn't have tests,
     // but we test the configuration mechanism itself
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
 }
@@ -356,11 +468,13 @@ fn test_bundler_with_keep_docs_config() {
         minify: false,
         aggressive_minify: false,
     };
-    
+
     let bundler = Bundler::with_config(config);
     let test_project_path = Path::new("test_project");
-    let bundled_code = bundler.bundle(test_project_path).expect("Bundle should succeed");
-    
+    let bundled_code = bundler
+        .bundle(test_project_path)
+        .expect("Bundle should succeed");
+
     // Should contain documentation when configured to keep docs
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
     // The exact test depends on what docs exist in test_project
@@ -376,13 +490,18 @@ fn test_bundler_disable_module_expansion() {
         minify: false,
         aggressive_minify: false,
     };
-    
+
     let bundler = Bundler::with_config(config);
     let test_project_path = Path::new("test_project");
-    let bundled_code = bundler.bundle(test_project_path).expect("Bundle should succeed");
-    
+    let bundled_code = bundler
+        .bundle(test_project_path)
+        .expect("Bundle should succeed");
+
     // When expansion is disabled, verify the bundler configuration is set correctly
-    assert!(!bundler.config().expand_modules, "Bundler should have expansion disabled");
+    assert!(
+        !bundler.config().expand_modules,
+        "Bundler should have expansion disabled"
+    );
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
 }
 
@@ -390,22 +509,38 @@ fn test_bundler_disable_module_expansion() {
 #[test]
 fn test_cargo_project_creation() {
     let test_project_path = Path::new("test_project");
-    let project = CargoProject::new(test_project_path).expect("Should create CargoProject successfully");
-    
+    let project =
+        CargoProject::new(test_project_path).expect("Should create CargoProject successfully");
+
     // Test project metadata
-    assert!(!project.crate_name().is_empty(), "Crate name should not be empty");
+    assert!(
+        !project.crate_name().is_empty(),
+        "Crate name should not be empty"
+    );
     assert!(project.base_path().exists(), "Base path should exist");
-    assert!(project.binary_source_path().exists(), "Binary source path should exist");
-    
+    assert!(
+        project.binary_source_path().exists(),
+        "Binary source path should exist"
+    );
+
     // Test binary target
     let binary_target = project.binary_target();
-    assert!(!binary_target.name.is_empty(), "Binary target name should not be empty");
-    assert!(binary_target.src_path.exists(), "Binary target source should exist");
-    
+    assert!(
+        !binary_target.name.is_empty(),
+        "Binary target name should not be empty"
+    );
+    assert!(
+        binary_target.src_path.exists(),
+        "Binary target source should exist"
+    );
+
     // Test root package
     let package = project.root_package();
     assert!(!package.name.is_empty(), "Package name should not be empty");
-    assert!(!package.version.to_string().is_empty(), "Package version should not be empty");
+    assert!(
+        !package.version.to_string().is_empty(),
+        "Package version should not be empty"
+    );
 }
 
 /// Test error handling for invalid project paths
@@ -413,8 +548,11 @@ fn test_cargo_project_creation() {
 fn test_invalid_project_path_error() {
     let invalid_path = Path::new("/nonexistent/path/to/project");
     let result = CargoProject::new(invalid_path);
-    
-    assert!(result.is_err(), "Should return error for invalid project path");
+
+    assert!(
+        result.is_err(),
+        "Should return error for invalid project path"
+    );
 }
 
 /// Test error handling for project without Cargo.toml
@@ -422,13 +560,16 @@ fn test_invalid_project_path_error() {
 fn test_project_without_cargo_toml() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     // Create directory structure but no Cargo.toml
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
     fs::write(project_path.join("src/main.rs"), "fn main() {}").expect("Failed to write main.rs");
-    
+
     let result = CargoProject::new(project_path);
-    assert!(result.is_err(), "Should return error for project without Cargo.toml");
+    assert!(
+        result.is_err(),
+        "Should return error for project without Cargo.toml"
+    );
 }
 
 /// Test bundling project with complex module structure
@@ -436,7 +577,7 @@ fn test_project_without_cargo_toml() {
 fn test_complex_module_structure() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     // Create complex project structure
     let cargo_toml = r#"
 [package]
@@ -449,10 +590,11 @@ name = "complex_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     // Create nested module structure
-    fs::create_dir_all(project_path.join("src/modules/submodule")).expect("Failed to create nested dirs");
-    
+    fs::create_dir_all(project_path.join("src/modules/submodule"))
+        .expect("Failed to create nested dirs");
+
     // Main file with module declarations
     let main_rs = r#"
 mod modules;
@@ -464,14 +606,15 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     // Module file
     let modules_mod = r#"
 pub mod helper;
 pub mod submodule;
 "#;
-    fs::write(project_path.join("src/modules/mod.rs"), modules_mod).expect("Failed to write modules/mod.rs");
-    
+    fs::write(project_path.join("src/modules/mod.rs"), modules_mod)
+        .expect("Failed to write modules/mod.rs");
+
     // Helper module
     let helper_rs = r#"
 pub struct HelperStruct {
@@ -488,23 +631,34 @@ impl HelperStruct {
     }
 }
 "#;
-    fs::write(project_path.join("src/modules/helper.rs"), helper_rs).expect("Failed to write helper.rs");
-    
+    fs::write(project_path.join("src/modules/helper.rs"), helper_rs)
+        .expect("Failed to write helper.rs");
+
     // Submodule
     let submodule_mod = r#"
 pub fn submodule_function() -> &'static str {
     "Hello from submodule"
 }
 "#;
-    fs::write(project_path.join("src/modules/submodule/mod.rs"), submodule_mod).expect("Failed to write submodule/mod.rs");
-    
+    fs::write(
+        project_path.join("src/modules/submodule/mod.rs"),
+        submodule_mod,
+    )
+    .expect("Failed to write submodule/mod.rs");
+
     // Test bundling
     let result = bundle(project_path).expect("Should bundle complex structure successfully");
-    
+
     assert!(!result.is_empty(), "Bundle result should not be empty");
-    assert!(result.contains("HelperStruct"), "Should contain HelperStruct");
+    assert!(
+        result.contains("HelperStruct"),
+        "Should contain HelperStruct"
+    );
     assert!(result.contains("fn main"), "Should contain main function");
-    assert!(result.contains("do_something"), "Should contain helper method");
+    assert!(
+        result.contains("do_something"),
+        "Should contain helper method"
+    );
 }
 
 /// Test bundling with Rust features and attributes
@@ -512,7 +666,7 @@ pub fn submodule_function() -> &'static str {
 fn test_bundling_with_attributes_and_features() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "features_test"
@@ -529,9 +683,9 @@ name = "features_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     let main_rs = r#"
 #![allow(dead_code)]
 #![warn(unused_variables)]
@@ -578,13 +732,22 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle code with attributes");
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
-    assert!(bundled_code.contains("ConfigStruct"), "Should contain ConfigStruct");
-    assert!(bundled_code.contains("#[derive("), "Should preserve derive attributes");
-    assert!(bundled_code.contains("#[cfg("), "Should preserve cfg attributes");
+    assert!(
+        bundled_code.contains("ConfigStruct"),
+        "Should contain ConfigStruct"
+    );
+    assert!(
+        bundled_code.contains("#[derive("),
+        "Should preserve derive attributes"
+    );
+    assert!(
+        bundled_code.contains("#[cfg("),
+        "Should preserve cfg attributes"
+    );
 }
 
 /// Test bundling with generic types and lifetimes
@@ -592,7 +755,7 @@ fn main() {
 fn test_bundling_with_generics_and_lifetimes() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "generics_test"
@@ -604,9 +767,9 @@ name = "generics_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     let main_rs = r#"
 use std::collections::HashMap;
 
@@ -670,14 +833,27 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
-    let bundled_code = bundle(project_path).expect("Should bundle code with generics and lifetimes");
-    
+
+    let bundled_code =
+        bundle(project_path).expect("Should bundle code with generics and lifetimes");
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
-    assert!(bundled_code.contains("GenericStruct"), "Should contain GenericStruct");
-    assert!(bundled_code.contains("GenericTrait"), "Should contain GenericTrait");
-    assert!(bundled_code.contains("<'a, T>"), "Should preserve lifetime parameters");
-    assert!(bundled_code.contains("where"), "Should preserve where clauses");
+    assert!(
+        bundled_code.contains("GenericStruct"),
+        "Should contain GenericStruct"
+    );
+    assert!(
+        bundled_code.contains("GenericTrait"),
+        "Should contain GenericTrait"
+    );
+    assert!(
+        bundled_code.contains("<'a, T>"),
+        "Should preserve lifetime parameters"
+    );
+    assert!(
+        bundled_code.contains("where"),
+        "Should preserve where clauses"
+    );
 }
 
 /// Test bundling with macros and procedural macros
@@ -685,7 +861,7 @@ fn main() {
 fn test_bundling_with_macros() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "macros_test"
@@ -697,9 +873,9 @@ name = "macros_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     let main_rs = r#"
 macro_rules! create_struct {
     ($name:ident, $field:ident: $type:ty) => {
@@ -740,13 +916,22 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle code with macros");
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
-    assert!(bundled_code.contains("macro_rules!"), "Should contain macro definitions");
-    assert!(bundled_code.contains("create_struct!"), "Should contain macro calls");
-    assert!(bundled_code.contains("TestStruct"), "Should contain macro-generated struct");
+    assert!(
+        bundled_code.contains("macro_rules!"),
+        "Should contain macro definitions"
+    );
+    assert!(
+        bundled_code.contains("create_struct!"),
+        "Should contain macro calls"
+    );
+    assert!(
+        bundled_code.contains("TestStruct"),
+        "Should contain macro-generated struct"
+    );
 }
 
 /// Test bundling with async/await code
@@ -754,7 +939,7 @@ fn main() {
 fn test_bundling_with_async_await() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "async_test"
@@ -766,9 +951,9 @@ name = "async_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     let main_rs = r#"
 use std::future::Future;
 use std::pin::Pin;
@@ -827,13 +1012,22 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle async code");
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
-    assert!(bundled_code.contains("async fn"), "Should contain async functions");
-    assert!(bundled_code.contains(".await"), "Should contain await expressions");
-    assert!(bundled_code.contains("impl Future"), "Should contain Future implementations");
+    assert!(
+        bundled_code.contains("async fn"),
+        "Should contain async functions"
+    );
+    assert!(
+        bundled_code.contains(".await"),
+        "Should contain await expressions"
+    );
+    assert!(
+        bundled_code.contains("impl Future"),
+        "Should contain Future implementations"
+    );
 }
 
 /// Test bundling with unsafe code
@@ -841,7 +1035,7 @@ fn main() {
 fn test_bundling_with_unsafe_code() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "unsafe_test"
@@ -853,9 +1047,9 @@ name = "unsafe_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     let main_rs = r#"
 use std::ptr;
 
@@ -920,25 +1114,37 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle unsafe code");
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
-    assert!(bundled_code.contains("unsafe fn"), "Should contain unsafe functions");
-    assert!(bundled_code.contains("unsafe {"), "Should contain unsafe blocks");
-    assert!(bundled_code.contains("UnsafeStruct"), "Should contain unsafe struct");
+    assert!(
+        bundled_code.contains("unsafe fn"),
+        "Should contain unsafe functions"
+    );
+    assert!(
+        bundled_code.contains("unsafe {"),
+        "Should contain unsafe blocks"
+    );
+    assert!(
+        bundled_code.contains("UnsafeStruct"),
+        "Should contain unsafe struct"
+    );
 }
 
 /// Test TransformConfig default values
 #[test]
 fn test_transform_config_defaults() {
     let config = TransformConfig::default();
-    
+
     assert!(config.remove_tests, "Should remove tests by default");
     assert!(config.remove_docs, "Should remove docs by default");
     assert!(config.expand_modules, "Should expand modules by default");
     assert!(!config.minify, "Should not minify by default");
-    assert!(!config.aggressive_minify, "Should not aggressive minify by default");
+    assert!(
+        !config.aggressive_minify,
+        "Should not aggressive minify by default"
+    );
 }
 
 /// Test TransformConfig custom values
@@ -951,22 +1157,37 @@ fn test_transform_config_custom() {
         minify: true,
         aggressive_minify: true,
     };
-    
-    assert!(!config.remove_tests, "Should not remove tests when configured");
-    assert!(!config.remove_docs, "Should not remove docs when configured");
-    assert!(!config.expand_modules, "Should not expand modules when configured");
+
+    assert!(
+        !config.remove_tests,
+        "Should not remove tests when configured"
+    );
+    assert!(
+        !config.remove_docs,
+        "Should not remove docs when configured"
+    );
+    assert!(
+        !config.expand_modules,
+        "Should not expand modules when configured"
+    );
     assert!(config.minify, "Should minify when configured");
-    assert!(config.aggressive_minify, "Should aggressive minify when configured");
+    assert!(
+        config.aggressive_minify,
+        "Should aggressive minify when configured"
+    );
 }
 
 /// Test Bundler configuration updates
 #[test]
 fn test_bundler_config_updates() {
     let mut bundler = Bundler::new();
-    
+
     // Test default config
-    assert!(bundler.config().remove_tests, "Should have default config initially");
-    
+    assert!(
+        bundler.config().remove_tests,
+        "Should have default config initially"
+    );
+
     // Update config
     let new_config = TransformConfig {
         remove_tests: false,
@@ -975,9 +1196,9 @@ fn test_bundler_config_updates() {
         minify: true,
         aggressive_minify: false,
     };
-    
+
     bundler.set_config(new_config.clone());
-    
+
     // Verify config was updated
     assert!(!bundler.config().remove_tests, "Config should be updated");
     assert!(!bundler.config().remove_docs, "Config should be updated");
@@ -990,7 +1211,7 @@ fn test_bundler_config_updates() {
 fn test_bundling_different_editions() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     // Test with 2018 edition
     let cargo_toml = r#"
 [package]
@@ -1003,9 +1224,9 @@ name = "edition_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     // Use 2018 edition features
     let main_rs = r#"
 use std::collections::HashMap;
@@ -1024,11 +1245,14 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle 2018 edition code");
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
-    assert!(bundled_code.contains("HashMap"), "Should contain HashMap usage");
+    assert!(
+        bundled_code.contains("HashMap"),
+        "Should contain HashMap usage"
+    );
 }
 
 /// Test bundling with external dependencies (simulation)
@@ -1036,7 +1260,7 @@ fn main() {
 fn test_bundling_with_external_deps_simulation() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "deps_test"
@@ -1048,9 +1272,9 @@ name = "deps_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     // Simulate using external dependencies (std library)
     let main_rs = r#"
 use std::collections::{HashMap, BTreeMap, HashSet};
@@ -1084,9 +1308,9 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle code with std library usage");
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
     assert!(bundled_code.contains("HashMap"), "Should contain HashMap");
     assert!(bundled_code.contains("Arc"), "Should contain Arc");
@@ -1097,11 +1321,13 @@ fn main() {
 #[test]
 fn test_bundling_memory_usage() {
     let test_project_path = Path::new("test_project");
-    
+
     // This is a basic test - in a real scenario you might want more sophisticated memory monitoring
     let bundler = Bundler::new();
-    let _result = bundler.bundle(test_project_path).expect("Bundle should succeed");
-    
+    let _result = bundler
+        .bundle(test_project_path)
+        .expect("Bundle should succeed");
+
     // If we get here without OOM, the test passes
     assert!(true, "Bundle completed without memory issues");
 }
@@ -1110,18 +1336,20 @@ fn test_bundling_memory_usage() {
 #[test]
 fn test_concurrent_bundling() {
     use std::thread;
-    
+
     let test_project_path = Path::new("test_project");
-    
-    let handles: Vec<_> = (0..3).map(|i| {
-        let path = test_project_path.to_path_buf();
-        thread::spawn(move || {
-            let bundler = Bundler::new();
-            let result = bundler.bundle(&path);
-            (i, result)
+
+    let handles: Vec<_> = (0..3)
+        .map(|i| {
+            let path = test_project_path.to_path_buf();
+            thread::spawn(move || {
+                let bundler = Bundler::new();
+                let result = bundler.bundle(&path);
+                (i, result)
+            })
         })
-    }).collect();
-    
+        .collect();
+
     for handle in handles {
         let (thread_id, result) = handle.join().expect("Thread should complete");
         result.expect(&format!("Bundle should succeed in thread {}", thread_id));
@@ -1133,7 +1361,7 @@ fn test_concurrent_bundling() {
 fn test_bundling_preserves_visibility() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "visibility_test"
@@ -1145,9 +1373,9 @@ name = "visibility_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     let main_rs = r#"
 pub struct PublicStruct {
     pub public_field: i32,
@@ -1194,14 +1422,23 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle code with visibility modifiers");
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
-    assert!(bundled_code.contains("pub struct"), "Should preserve pub struct");
+    assert!(
+        bundled_code.contains("pub struct"),
+        "Should preserve pub struct"
+    );
     assert!(bundled_code.contains("pub fn"), "Should preserve pub fn");
-    assert!(bundled_code.contains("pub(crate)"), "Should preserve pub(crate)");
-    assert!(bundled_code.contains("pub(super)"), "Should preserve pub(super)");
+    assert!(
+        bundled_code.contains("pub(crate)"),
+        "Should preserve pub(crate)"
+    );
+    assert!(
+        bundled_code.contains("pub(super)"),
+        "Should preserve pub(super)"
+    );
 }
 
 /// Test bundling with const and static items
@@ -1209,7 +1446,7 @@ fn main() {
 fn test_bundling_const_static_items() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "const_static_test"
@@ -1221,9 +1458,9 @@ name = "const_static_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     let main_rs = r#"
 use std::sync::Mutex;
 
@@ -1272,13 +1509,22 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle const and static items");
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
-    assert!(bundled_code.contains("const MAX_SIZE"), "Should contain const declarations");
-    assert!(bundled_code.contains("static GLOBAL_COUNTER"), "Should contain static declarations");
-    assert!(bundled_code.contains("const fn"), "Should contain const functions");
+    assert!(
+        bundled_code.contains("const MAX_SIZE"),
+        "Should contain const declarations"
+    );
+    assert!(
+        bundled_code.contains("static GLOBAL_COUNTER"),
+        "Should contain static declarations"
+    );
+    assert!(
+        bundled_code.contains("const fn"),
+        "Should contain const functions"
+    );
 }
 
 /// Test error display formatting
@@ -1286,31 +1532,46 @@ fn main() {
 fn test_error_display_formatting() {
     use cg_bundler::error::BundlerError;
     use std::io;
-    
+
     // Test IO error with path
     let io_error = BundlerError::Io {
         source: io::Error::new(io::ErrorKind::NotFound, "File not found"),
         path: Some(std::path::PathBuf::from("/test/path")),
     };
     let error_string = format!("{}", io_error);
-    assert!(error_string.contains("IO error"), "Should contain IO error message");
-    assert!(error_string.contains("/test/path"), "Should contain file path");
-    
+    assert!(
+        error_string.contains("IO error"),
+        "Should contain IO error message"
+    );
+    assert!(
+        error_string.contains("/test/path"),
+        "Should contain file path"
+    );
+
     // Test parsing error
     let parsing_error = BundlerError::Parsing {
         message: "Invalid syntax".to_string(),
         file_path: Some(std::path::PathBuf::from("/test/file.rs")),
     };
     let error_string = format!("{}", parsing_error);
-    assert!(error_string.contains("Parsing error"), "Should contain parsing error message");
-    assert!(error_string.contains("/test/file.rs"), "Should contain file path");
-    
+    assert!(
+        error_string.contains("Parsing error"),
+        "Should contain parsing error message"
+    );
+    assert!(
+        error_string.contains("/test/file.rs"),
+        "Should contain file path"
+    );
+
     // Test project structure error
     let structure_error = BundlerError::ProjectStructure {
         message: "Invalid project structure".to_string(),
     };
     let error_string = format!("{}", structure_error);
-    assert!(error_string.contains("Project structure error"), "Should contain structure error message");
+    assert!(
+        error_string.contains("Project structure error"),
+        "Should contain structure error message"
+    );
 }
 
 /// Test bundling with large number of modules (stress test)
@@ -1318,7 +1579,7 @@ fn test_error_display_formatting() {
 fn test_bundling_many_modules() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "many_modules_test"
@@ -1330,9 +1591,9 @@ name = "many_modules_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     // Generate main.rs with many module declarations
     let mut main_content = String::new();
     for i in 0..20 {
@@ -1343,9 +1604,9 @@ path = "src/main.rs"
         main_content.push_str(&format!("    module{}::function{}();\n", i, i));
     }
     main_content.push_str("}\n");
-    
+
     fs::write(project_path.join("src/main.rs"), main_content).expect("Failed to write main.rs");
-    
+
     // Generate module files
     for i in 0..20 {
         let module_content = format!(
@@ -1377,23 +1638,24 @@ impl Struct{} {{
 "#,
             i, i, i, i, i, i
         );
-        
+
         fs::write(
             project_path.join(&format!("src/module{}.rs", i)),
             module_content,
-        ).expect("Failed to write module file");
+        )
+        .expect("Failed to write module file");
     }
-    
+
     // Time the bundling operation
     let start = std::time::Instant::now();
     let bundled_code = bundle(project_path).expect("Should bundle stress test project");
     let duration = start.elapsed();
-    
+
     println!("Bundling took: {:?}", duration);
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
     assert!(bundled_code.len() > 10000, "Bundle should be substantial");
-    
+
     // Verify it contains expected content
     for i in 0..20 {
         assert!(
@@ -1407,20 +1669,23 @@ impl Struct{} {{
             i
         );
     }
-    
+
     // Performance assertion - should complete within reasonable time
-    assert!(duration.as_secs() < 10, "Bundling should complete within 10 seconds");
+    assert!(
+        duration.as_secs() < 10,
+        "Bundling should complete within 10 seconds"
+    );
 }
 
 /// Test concurrent access and thread safety
 #[test]
 fn test_concurrent_bundling_operations() {
-    use std::thread;
     use std::sync::Arc;
-    
+    use std::thread;
+
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     // Create a simple test project
     let cargo_toml = r#"
 [package]
@@ -1433,9 +1698,9 @@ name = "concurrent_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
-    
+
     let main_rs = r#"
 fn main() {
     println!("Hello from concurrent test!");
@@ -1448,34 +1713,48 @@ fn calculate_something() -> i32 {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let project_path = Arc::new(project_path.to_path_buf());
-    
+
     // Spawn multiple threads that bundle the same project concurrently
-    let handles: Vec<_> = (0..5).map(|i| {
-        let path = project_path.clone();
-        thread::spawn(move || {
-            let bundler = Bundler::new();
-            let result = bundler.bundle(&*path);
-            (i, result)
+    let handles: Vec<_> = (0..5)
+        .map(|i| {
+            let path = project_path.clone();
+            thread::spawn(move || {
+                let bundler = Bundler::new();
+                let result = bundler.bundle(&*path);
+                (i, result)
+            })
         })
-    }).collect();
-    
+        .collect();
+
     // Collect results
     let mut results = Vec::new();
     for handle in handles {
         let (thread_id, result) = handle.join().expect("Thread should complete successfully");
         results.push((thread_id, result));
     }
-    
+
     // Verify all results
     for (thread_id, result) in results {
         assert!(result.is_ok(), "Thread {} should succeed", thread_id);
-        
+
         if let Ok(bundled_code) = result {
-            assert!(!bundled_code.is_empty(), "Thread {} should produce non-empty bundle", thread_id);
-            assert!(bundled_code.contains("fn main"), "Thread {} should contain main function", thread_id);
-            assert!(bundled_code.contains("calculate_something"), "Thread {} should contain helper function", thread_id);
+            assert!(
+                !bundled_code.is_empty(),
+                "Thread {} should produce non-empty bundle",
+                thread_id
+            );
+            assert!(
+                bundled_code.contains("fn main"),
+                "Thread {} should contain main function",
+                thread_id
+            );
+            assert!(
+                bundled_code.contains("calculate_something"),
+                "Thread {} should contain helper function",
+                thread_id
+            );
         }
     }
 }
@@ -1484,11 +1763,11 @@ fn calculate_something() -> i32 {
 #[test]
 fn test_memory_usage_and_cleanup() {
     let initial_memory = get_memory_usage();
-    
+
     for _ in 0..10 {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let project_path = temp_dir.path();
-        
+
         // Create a moderately complex project
         let cargo_toml = r#"
 [package]
@@ -1498,8 +1777,9 @@ edition = "2021"
 "#;
         fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
         fs::create_dir(project_path.join("src")).expect("Failed to create src");
-        
-        let main_rs = format!(r#"
+
+        let main_rs = format!(
+            r#"
 fn main() {{
     let data: Vec<i32> = (0..1000).collect();
     println!("Data length: {{}}", data.len());
@@ -1514,25 +1794,34 @@ fn main() {{
 
 // Additional functions to increase code size
 {}
-"#, (0..100).map(|i| format!("fn function_{}() {{ println!(\"Function {}\"); }}", i, i)).collect::<Vec<_>>().join("\n"));
-        
+"#,
+            (0..100)
+                .map(|i| format!("fn function_{}() {{ println!(\"Function {}\"); }}", i, i))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+
         fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-        
+
         let bundler = Bundler::new();
         let _result = bundler.bundle(project_path).expect("Bundle should succeed");
-        
+
         // Force cleanup
         drop(_result);
         drop(bundler);
         drop(temp_dir);
     }
-    
+
     // Check that memory hasn't grown excessively
     let final_memory = get_memory_usage();
     let memory_growth = final_memory.saturating_sub(initial_memory);
-    
+
     // Allow some memory growth but not excessive (adjust threshold as needed)
-    assert!(memory_growth < 100_000_000, "Memory usage grew by {} bytes, which seems excessive", memory_growth);
+    assert!(
+        memory_growth < 100_000_000,
+        "Memory usage grew by {} bytes, which seems excessive",
+        memory_growth
+    );
 }
 
 // Helper function to get approximate memory usage
@@ -1564,7 +1853,7 @@ impl MemoryAllocator for std::alloc::System {
 fn test_cli_parsing_edge_cases() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     // Create minimal test project
     let cargo_toml = r#"
 [package]
@@ -1575,7 +1864,7 @@ edition = "2021"
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::create_dir(project_path.join("src")).expect("Failed to create src");
     fs::write(project_path.join("src/main.rs"), "fn main() {}").expect("Failed to write main.rs");
-    
+
     // Test various CLI invocations (if applicable)
     let bundler = Bundler::new();
     let result = bundler.bundle(project_path);
@@ -1587,17 +1876,17 @@ edition = "2021"
 fn test_bundling_with_long_paths() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let base_path = temp_dir.path();
-    
+
     // Create a deep directory structure
     let mut deep_path = base_path.to_path_buf();
     for i in 0..10 {
         deep_path = deep_path.join(format!("very_long_directory_name_{}", i));
         fs::create_dir_all(&deep_path).expect("Failed to create deep directories");
     }
-    
+
     let project_path = deep_path.join("project");
     fs::create_dir_all(project_path.join("src")).expect("Failed to create project");
-    
+
     let cargo_toml = r#"
 [package]
 name = "long_path_test"
@@ -1606,7 +1895,7 @@ edition = "2021"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::write(project_path.join("src/main.rs"), "fn main() {}").expect("Failed to write main.rs");
-    
+
     let bundler = Bundler::new();
     let result = bundler.bundle(&project_path);
     assert!(result.is_ok(), "Should handle very long paths");
@@ -1617,7 +1906,7 @@ edition = "2021"
 fn test_bundling_with_special_characters() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "special_chars"
@@ -1626,7 +1915,7 @@ edition = "2021"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::create_dir(project_path.join("src")).expect("Failed to create src");
-    
+
     // Test with special characters and unicode
     let main_rs = "
 fn main() {
@@ -1644,12 +1933,18 @@ fn main() {
 }
 ";
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle code with special characters");
-    
+
     assert!(bundled_code.contains("Hello"), "Should preserve basic text");
-    assert!(bundled_code.contains("Café"), "Should preserve accented characters");
-    assert!(bundled_code.contains("raw_string"), "Should preserve variable names");
+    assert!(
+        bundled_code.contains("Café"),
+        "Should preserve accented characters"
+    );
+    assert!(
+        bundled_code.contains("raw_string"),
+        "Should preserve variable names"
+    );
 }
 
 /// Test bundling with very large files
@@ -1657,7 +1952,7 @@ fn main() {
 fn test_bundling_with_large_files() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "large_file_test"
@@ -1666,32 +1961,39 @@ edition = "2021"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::create_dir(project_path.join("src")).expect("Failed to create src");
-    
+
     // Generate a large file with many functions
     let mut large_content = String::from("fn main() {\n");
     for i in 0..1000 {
         large_content.push_str(&format!("    function_{}();\n", i));
     }
     large_content.push_str("}\n\n");
-    
+
     for i in 0..1000 {
         large_content.push_str(&format!(
-            "fn function_{}() {{\n    println!(\"Function {}\");\n}}\n\n", 
+            "fn function_{}() {{\n    println!(\"Function {}\");\n}}\n\n",
             i, i
         ));
     }
-    
-    fs::write(project_path.join("src/main.rs"), large_content).expect("Failed to write large main.rs");
-    
+
+    fs::write(project_path.join("src/main.rs"), large_content)
+        .expect("Failed to write large main.rs");
+
     let start_time = std::time::Instant::now();
     let bundled_code = bundle(project_path).expect("Should bundle large file");
     let duration = start_time.elapsed();
-    
+
     assert!(!bundled_code.is_empty(), "Bundle should not be empty");
-    assert!(bundled_code.contains("function_999"), "Should contain all functions");
-    
+    assert!(
+        bundled_code.contains("function_999"),
+        "Should contain all functions"
+    );
+
     // Performance assertion - should complete within reasonable time for large files
-    assert!(duration.as_secs() < 30, "Large file bundling should complete within 30 seconds");
+    assert!(
+        duration.as_secs() < 30,
+        "Large file bundling should complete within 30 seconds"
+    );
 }
 
 // ==============================================
@@ -1703,7 +2005,7 @@ edition = "2021"
 fn test_bundling_with_advanced_generics() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "generics_test"
@@ -1712,7 +2014,7 @@ edition = "2021"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::create_dir(project_path.join("src")).expect("Failed to create src");
-    
+
     let main_rs = r#"
 use std::fmt::Display;
 use std::marker::PhantomData;
@@ -1775,13 +2077,25 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle advanced generics");
-    
-    assert!(bundled_code.contains("ComplexGeneric"), "Should contain complex generic struct");
-    assert!(bundled_code.contains("where"), "Should preserve where clauses");
-    assert!(bundled_code.contains("PhantomData"), "Should preserve PhantomData");
-    assert!(bundled_code.contains("for<'a>"), "Should preserve HRTB syntax");
+
+    assert!(
+        bundled_code.contains("ComplexGeneric"),
+        "Should contain complex generic struct"
+    );
+    assert!(
+        bundled_code.contains("where"),
+        "Should preserve where clauses"
+    );
+    assert!(
+        bundled_code.contains("PhantomData"),
+        "Should preserve PhantomData"
+    );
+    assert!(
+        bundled_code.contains("for<'a>"),
+        "Should preserve HRTB syntax"
+    );
 }
 
 /// Test bundling with procedural macros and derive macros
@@ -1789,7 +2103,7 @@ fn main() {
 fn test_bundling_with_proc_macros() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "proc_macro_test"
@@ -1801,7 +2115,7 @@ serde = { version = "1.0", features = ["derive"] }
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::create_dir(project_path.join("src")).expect("Failed to create src");
-    
+
     let main_rs = r#"
 use serde::{Serialize, Deserialize};
 
@@ -1852,13 +2166,25 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle proc macro code");
-    
-    assert!(bundled_code.contains("#[derive("), "Should preserve derive attributes");
-    assert!(bundled_code.contains("Serialize"), "Should preserve Serialize derive");
-    assert!(bundled_code.contains("Deserialize"), "Should preserve Deserialize derive");
-    assert!(bundled_code.contains("#[serde("), "Should preserve serde attributes");
+
+    assert!(
+        bundled_code.contains("#[derive("),
+        "Should preserve derive attributes"
+    );
+    assert!(
+        bundled_code.contains("Serialize"),
+        "Should preserve Serialize derive"
+    );
+    assert!(
+        bundled_code.contains("Deserialize"),
+        "Should preserve Deserialize derive"
+    );
+    assert!(
+        bundled_code.contains("#[serde("),
+        "Should preserve serde attributes"
+    );
 }
 
 /// Test bundling with complex lifetime annotations
@@ -1866,7 +2192,7 @@ fn main() {
 fn test_bundling_with_complex_lifetimes() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "lifetime_test"
@@ -1875,7 +2201,7 @@ edition = "2021"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::create_dir(project_path.join("src")).expect("Failed to create src");
-    
+
     let main_rs = r#"
 use std::collections::HashMap;
 
@@ -1947,12 +2273,18 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle complex lifetime code");
-    
-    assert!(bundled_code.contains("'a: 'b"), "Should preserve lifetime bounds");
+
+    assert!(
+        bundled_code.contains("'a: 'b"),
+        "Should preserve lifetime bounds"
+    );
     assert!(bundled_code.contains("for<'a>"), "Should preserve HRTB");
-    assert!(bundled_code.contains("'a: 'b + 'c"), "Should preserve multiple lifetime bounds");
+    assert!(
+        bundled_code.contains("'a: 'b + 'c"),
+        "Should preserve multiple lifetime bounds"
+    );
 }
 
 // ==============================================
@@ -1964,7 +2296,7 @@ fn main() {
 fn test_bundling_with_custom_errors() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "error_test"
@@ -1973,7 +2305,7 @@ edition = "2021"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::create_dir(project_path.join("src")).expect("Failed to create src");
-    
+
     let main_rs = r#"
 use std::fmt;
 use std::error::Error;
@@ -2089,13 +2421,25 @@ fn main() -> AppResult<()> {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle custom error code");
-    
-    assert!(bundled_code.contains("ApplicationError"), "Should contain custom error enum");
-    assert!(bundled_code.contains("impl Error for"), "Should preserve Error trait implementations");
-    assert!(bundled_code.contains("AppResult"), "Should preserve type aliases");
-    assert!(bundled_code.contains("?"), "Should preserve error propagation operator");
+
+    assert!(
+        bundled_code.contains("ApplicationError"),
+        "Should contain custom error enum"
+    );
+    assert!(
+        bundled_code.contains("impl Error for"),
+        "Should preserve Error trait implementations"
+    );
+    assert!(
+        bundled_code.contains("AppResult"),
+        "Should preserve type aliases"
+    );
+    assert!(
+        bundled_code.contains("?"),
+        "Should preserve error propagation operator"
+    );
 }
 
 // ==============================================
@@ -2107,7 +2451,7 @@ fn main() -> AppResult<()> {
 fn test_bundling_with_advanced_concurrency() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "concurrency_test"
@@ -2119,7 +2463,7 @@ tokio = { version = "1.0", features = ["full"] }
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::create_dir(project_path.join("src")).expect("Failed to create src");
-    
+
     let main_rs = r#"
 use std::sync::{Arc, Mutex, RwLock, Condvar, Barrier};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -2275,14 +2619,29 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle concurrency code");
-    
-    assert!(bundled_code.contains("Arc<Mutex<"), "Should preserve Arc<Mutex<>> patterns");
-    assert!(bundled_code.contains("RwLock"), "Should preserve RwLock usage");
-    assert!(bundled_code.contains("Condvar"), "Should preserve condition variables");
-    assert!(bundled_code.contains("Barrier"), "Should preserve barrier synchronization");
-    assert!(bundled_code.contains("mpsc::"), "Should preserve channel imports");
+
+    assert!(
+        bundled_code.contains("Arc<Mutex<"),
+        "Should preserve Arc<Mutex<>> patterns"
+    );
+    assert!(
+        bundled_code.contains("RwLock"),
+        "Should preserve RwLock usage"
+    );
+    assert!(
+        bundled_code.contains("Condvar"),
+        "Should preserve condition variables"
+    );
+    assert!(
+        bundled_code.contains("Barrier"),
+        "Should preserve barrier synchronization"
+    );
+    assert!(
+        bundled_code.contains("mpsc::"),
+        "Should preserve channel imports"
+    );
 }
 
 // ==============================================
@@ -2294,7 +2653,7 @@ fn main() {
 fn test_bundling_with_performance_patterns() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "performance_test"
@@ -2303,7 +2662,7 @@ edition = "2021"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
     fs::create_dir(project_path.join("src")).expect("Failed to create src");
-    
+
     let main_rs = r#"
 use std::hint::black_box;
 use std::arch::x86_64::*;
@@ -2450,17 +2809,29 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle performance code");
-    
-    assert!(bundled_code.contains("#[inline"), "Should preserve inline attributes");
-    assert!(bundled_code.contains("black_box"), "Should preserve optimization barriers");
-    assert!(bundled_code.contains("#[repr("), "Should preserve repr attributes");
-    assert!(bundled_code.contains("intrinsics::"), "Should preserve intrinsics usage");
+
+    assert!(
+        bundled_code.contains("#[inline"),
+        "Should preserve inline attributes"
+    );
+    assert!(
+        bundled_code.contains("black_box"),
+        "Should preserve optimization barriers"
+    );
+    assert!(
+        bundled_code.contains("#[repr("),
+        "Should preserve repr attributes"
+    );
+    assert!(
+        bundled_code.contains("intrinsics::"),
+        "Should preserve intrinsics usage"
+    );
 }
 
 // ==============================================
-// COMPLEX MODULE HIERARCHY TESTS  
+// COMPLEX MODULE HIERARCHY TESTS
 // ==============================================
 
 /// Test bundling with deeply nested module structures
@@ -2468,7 +2839,7 @@ fn main() {
 fn test_bundling_complex_module_hierarchy() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let project_path = temp_dir.path();
-    
+
     let cargo_toml = r#"
 [package]
 name = "complex_modules"
@@ -2476,14 +2847,15 @@ version = "0.1.0"
 edition = "2021"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    
+
     // Create complex directory structure
-    fs::create_dir_all(project_path.join("src/core/engine/graphics")).expect("Failed to create dirs");
+    fs::create_dir_all(project_path.join("src/core/engine/graphics"))
+        .expect("Failed to create dirs");
     fs::create_dir_all(project_path.join("src/core/engine/audio")).expect("Failed to create dirs");
     fs::create_dir_all(project_path.join("src/core/systems")).expect("Failed to create dirs");
     fs::create_dir_all(project_path.join("src/utils/math")).expect("Failed to create dirs");
     fs::create_dir_all(project_path.join("src/utils/io")).expect("Failed to create dirs");
-    
+
     // Main module file
     let main_rs = r#"
 mod core;
@@ -2503,7 +2875,7 @@ fn main() {
 }
 "#;
     fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-    
+
     // Core module
     let core_mod = r#"
 pub mod engine;
@@ -2513,7 +2885,7 @@ pub use engine::Engine;
 pub use systems::*;
 "#;
     fs::write(project_path.join("src/core/mod.rs"), core_mod).expect("Failed to write core/mod.rs");
-    
+
     // Engine module
     let engine_mod = r#"
 pub mod graphics;
@@ -2566,8 +2938,9 @@ impl Engine {
     }
 }
 "#;
-    fs::write(project_path.join("src/core/engine/mod.rs"), engine_mod).expect("Failed to write engine/mod.rs");
-    
+    fs::write(project_path.join("src/core/engine/mod.rs"), engine_mod)
+        .expect("Failed to write engine/mod.rs");
+
     // Graphics module
     let graphics_rs = r#"
 pub struct Renderer {
@@ -2585,8 +2958,12 @@ impl Renderer {
     }
 }
 "#;
-    fs::write(project_path.join("src/core/engine/graphics.rs"), graphics_rs).expect("Failed to write graphics.rs");
-    
+    fs::write(
+        project_path.join("src/core/engine/graphics.rs"),
+        graphics_rs,
+    )
+    .expect("Failed to write graphics.rs");
+
     // Audio module
     let audio_rs = r#"
 pub struct AudioSystem {
@@ -2603,8 +2980,9 @@ impl AudioSystem {
     }
 }
 "#;
-    fs::write(project_path.join("src/core/engine/audio.rs"), audio_rs).expect("Failed to write audio.rs");
-    
+    fs::write(project_path.join("src/core/engine/audio.rs"), audio_rs)
+        .expect("Failed to write audio.rs");
+
     // Systems module
     let systems_rs = r#"
 pub mod physics;
@@ -2617,8 +2995,9 @@ pub trait System {
     fn update(&mut self, delta_time: f32);
 }
 "#;
-    fs::write(project_path.join("src/core/systems/mod.rs"), systems_rs).expect("Failed to write systems/mod.rs");
-    
+    fs::write(project_path.join("src/core/systems/mod.rs"), systems_rs)
+        .expect("Failed to write systems/mod.rs");
+
     // Physics system
     let physics_rs = r#"
 use super::System;
@@ -2639,8 +3018,9 @@ impl System for PhysicsSystem {
     }
 }
 "#;
-    fs::write(project_path.join("src/core/systems/physics.rs"), physics_rs).expect("Failed to write physics.rs");
-    
+    fs::write(project_path.join("src/core/systems/physics.rs"), physics_rs)
+        .expect("Failed to write physics.rs");
+
     // Input system
     let input_rs = r#"
 use super::System;
@@ -2661,8 +3041,9 @@ impl System for InputSystem {
     }
 }
 "#;
-    fs::write(project_path.join("src/core/systems/input.rs"), input_rs).expect("Failed to write input.rs");
-    
+    fs::write(project_path.join("src/core/systems/input.rs"), input_rs)
+        .expect("Failed to write input.rs");
+
     // Utils module
     let utils_mod = r#"
 pub mod math;
@@ -2671,8 +3052,9 @@ pub mod io;
 pub use math::*;
 pub use io::*;
 "#;
-    fs::write(project_path.join("src/utils/mod.rs"), utils_mod).expect("Failed to write utils/mod.rs");
-    
+    fs::write(project_path.join("src/utils/mod.rs"), utils_mod)
+        .expect("Failed to write utils/mod.rs");
+
     // Math module
     let math_mod = r#"
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2704,8 +3086,9 @@ impl std::ops::Add for Vector3 {
     }
 }
 "#;
-    fs::write(project_path.join("src/utils/math/mod.rs"), math_mod).expect("Failed to write math/mod.rs");
-    
+    fs::write(project_path.join("src/utils/math/mod.rs"), math_mod)
+        .expect("Failed to write math/mod.rs");
+
     // IO module
     let io_mod = r#"
 use std::fs;
@@ -2720,16 +3103,31 @@ pub fn write_config_file<P: AsRef<Path>>(path: P, content: &str) -> Result<(), s
 }
 "#;
     fs::write(project_path.join("src/utils/io/mod.rs"), io_mod).expect("Failed to write io/mod.rs");
-    
+
     let bundled_code = bundle(project_path).expect("Should bundle complex module hierarchy");
-    
-    assert!(bundled_code.contains("Engine"), "Should contain Engine struct");
-    assert!(bundled_code.contains("Vector3"), "Should contain Vector3 struct");
-    assert!(bundled_code.contains("PhysicsSystem"), "Should contain PhysicsSystem");
-    assert!(bundled_code.contains("InputSystem"), "Should contain InputSystem");
+
+    assert!(
+        bundled_code.contains("Engine"),
+        "Should contain Engine struct"
+    );
+    assert!(
+        bundled_code.contains("Vector3"),
+        "Should contain Vector3 struct"
+    );
+    assert!(
+        bundled_code.contains("PhysicsSystem"),
+        "Should contain PhysicsSystem"
+    );
+    assert!(
+        bundled_code.contains("InputSystem"),
+        "Should contain InputSystem"
+    );
     assert!(bundled_code.contains("Renderer"), "Should contain Renderer");
-    assert!(bundled_code.contains("AudioSystem"), "Should contain AudioSystem");
-    
+    assert!(
+        bundled_code.contains("AudioSystem"),
+        "Should contain AudioSystem"
+    );
+
     // Verify it's valid Rust syntax
     syn::parse_file(&bundled_code).expect("Bundled code should be valid Rust");
 }
