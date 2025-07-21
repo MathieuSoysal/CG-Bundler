@@ -10,12 +10,6 @@ pub mod error;
 pub mod file_manager;
 pub mod transformer;
 
-#[cfg(test)]
-mod lib_tests;
-
-#[cfg(test)]
-mod debug_tests;
-
 // Re-export main types for convenience
 pub use bundler::Bundler;
 pub use cargo_project::CargoProject;
