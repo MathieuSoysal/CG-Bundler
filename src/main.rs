@@ -255,8 +255,43 @@ fn aggressive_minify_code(code: &str) -> String {
     // First apply basic minification
     let mut result = minify_code(code);
     
-    // Then apply aggressive replacements to remove more whitespace
-    result = result
+    // Parse string literals to preserve them during aggressive minification
+    let mut string_literals = Vec::new();
+    let mut placeholder_index = 0;
+    
+    // Extract string literals and replace with placeholders
+    let mut chars = result.chars().peekable();
+    let mut output = String::new();
+    
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            // Start of string literal
+            let mut string_literal = String::from('"');
+            let mut escaped = false;
+            
+            while let Some(str_ch) = chars.next() {
+                string_literal.push(str_ch);
+                if str_ch == '\\' && !escaped {
+                    escaped = true;
+                } else if str_ch == '"' && !escaped {
+                    break;
+                } else {
+                    escaped = false;
+                }
+            }
+            
+            // Store the string literal and use a placeholder
+            let placeholder = format!("__STRING_LITERAL_{}__", placeholder_index);
+            string_literals.push(string_literal);
+            output.push_str(&placeholder);
+            placeholder_index += 1;
+        } else {
+            output.push(ch);
+        }
+    }
+    
+    // Apply aggressive replacements to the code without string literals
+    result = output
         // Remove spaces around operators and punctuation
         .replace(" = ", "=")
         .replace(" + ", "+")
@@ -306,16 +341,18 @@ fn aggressive_minify_code(code: &str) -> String {
         .replace("; ", ";")
         .replace("( ", "(")
         .replace("[ ", "[")
-        .replace("{ ", "{")
-        // Remove spaces around keywords (be careful with keywords that need spaces)
-        .replace(" if ", "if")
-        .replace(" else ", "else")
-        .replace(" while ", "while")
-        .replace(" for ", "for")
-        .replace(" match ", "match")
-        .replace(" return ", "return")
-        .replace(" break ", "break")
-        .replace(" continue ", "continue");
+        .replace("{ ", "{");
+    
+    // Restore string literals
+    for (i, string_literal) in string_literals.into_iter().enumerate() {
+        let placeholder = format!("__STRING_LITERAL_{}__", i);
+        result = result.replace(&placeholder, &string_literal);
+    }
+    
+    // Final cleanup: remove any remaining multiple spaces
+    while result.contains("  ") {
+        result = result.replace("  ", " ");
+    }
     
     result
 }
