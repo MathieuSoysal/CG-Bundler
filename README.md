@@ -16,6 +16,20 @@
 
 ---
 
+### Quick use
+
+_With cargo :_
+```bash
+cargo install cg-bundler
+cg-bundler > output.rs
+```
+
+_Without cargo :_
+```bash
+curl -L https://github.com/MathieuSoysal/cg-bundler/releases/latest/download/cg-bundler-linux-amd64 -o cg-bundler
+bash cg-bundler > output.rs
+```
+
 ## ✨ Features
 
 - 🚀 **Fast bundling** - Efficiently combines Rust projects into single files
