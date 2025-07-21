@@ -1,29 +1,121 @@
 use clap::Parser;
 use colored::*;
 use std::fs;
+use std::path::PathBuf;
 use std::process;
 
-use cg_bundler::cli::{Cli, Commands};
-use cg_bundler::error::BundlerError;
-use cg_bundler::{Bundler, CargoProject};
+use cg_bundler::{Bundler, CargoProject, BundlerError, TransformConfig};
+
+/// A Rust code bundler that combines multiple source files into a single file
+#[derive(Parser, Debug)]
+#[command(name = "cg-bundler")]
+#[command(about = "Bundle Rust projects into single files")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(author = "CG Bundler Contributors")]
+#[command(long_about = "A Rust code bundler that combines multiple source files into a single file.\nBy default, bundles the current directory or the specified project path.")]
+pub struct Cli {
+    /// Path to the Cargo project directory (defaults to current directory)
+    #[arg(value_name = "PROJECT_PATH", help = "Path to bundle (defaults to current directory)")]
+    pub project_path: Option<PathBuf>,
+
+    /// Output file path (stdout if not specified)
+    #[arg(short, long, value_name = "FILE", help = "Output file path")]
+    pub output: Option<PathBuf>,
+
+    /// Keep test code in the bundled output
+    #[arg(long, help = "Keep test code in the bundled output")]
+    pub keep_tests: bool,
+
+    /// Keep documentation comments in the bundled output
+    #[arg(long, help = "Keep documentation comments")]
+    pub keep_docs: bool,
+
+    /// Disable module expansion (keep module declarations)
+    #[arg(long, help = "Disable module expansion")]
+    pub no_expand_modules: bool,
+
+    /// Pretty print the output (format with rustfmt if available)
+    #[arg(long, help = "Pretty print the output")]
+    pub pretty: bool,
+
+    /// Minify the output to a single line
+    #[arg(short, long, help = "Minify the output")]
+    pub minify: bool,
+
+    /// Aggressive minify with whitespace replacements (implies -m)
+    #[arg(long, help = "Aggressive minify")]
+    pub m2: bool,
+
+    /// Verbose output
+    #[arg(short, long, help = "Verbose output")]
+    pub verbose: bool,
+
+    /// Validate that the project can be bundled without errors (instead of bundling)
+    #[arg(long, help = "Validate that the project can be bundled without errors")]
+    pub validate: bool,
+
+    /// Show information about the Cargo project structure (instead of bundling)
+    #[arg(long, help = "Show information about the Cargo project structure")]
+    pub info: bool,
+}
+
+
+
+impl Cli {
+    /// Get the effective project path, using current directory as default
+    pub fn get_project_path(&self) -> PathBuf {
+        self.project_path.clone().unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    /// Check if verbose mode is enabled
+    pub fn is_verbose(&self) -> bool {
+        self.verbose
+    }
+
+    /// Get transform configuration from the CLI flags
+    pub fn get_transform_config(&self) -> TransformConfig {
+        TransformConfig {
+            remove_tests: !self.keep_tests,
+            remove_docs: !self.keep_docs,
+            expand_modules: !self.no_expand_modules,
+            minify: self.minify || self.m2,
+            aggressive_minify: self.m2,
+        }
+    }
+
+    /// Get the output file path
+    pub fn get_output(&self) -> Option<&PathBuf> {
+        self.output.as_ref()
+    }
+
+    /// Check if pretty formatting is requested
+    pub fn is_pretty(&self) -> bool {
+        self.pretty
+    }
+
+    /// Check if minification is requested
+    pub fn is_minify(&self) -> bool {
+        self.minify || self.m2
+    }
+
+    /// Check if aggressive minification is requested
+    pub fn is_aggressive_minify(&self) -> bool {
+        self.m2
+    }
+
+}
 
 fn main() {
     let cli = Cli::parse();
 
-    let result = match &cli.command {
-        Commands::Bundle {
-            output,
-            pretty,
-            minify,
-            m2,
-            verbose,
-            ..
-        } => handle_bundle_command(&cli.command, *verbose, *pretty, *minify || *m2, *m2, output.as_ref()),
-        Commands::Validate {
-            project_path,
-            verbose,
-        } => handle_validate_command(project_path, *verbose),
-        Commands::Info { project_path } => handle_info_command(project_path),
+    // Handle the different operations based on flags
+    let result = if cli.validate {
+        handle_validate_command(&cli.get_project_path(), cli.is_verbose())
+    } else if cli.info {
+        handle_info_command(&cli.get_project_path())
+    } else {
+        // Default behavior: bundle the project
+        handle_bundle_command(&cli)
     };
 
     if let Err(e) = result {
@@ -32,16 +124,14 @@ fn main() {
     }
 }
 
-fn handle_bundle_command(
-    command: &Commands,
-    verbose: bool,
-    pretty: bool,
-    minify: bool,
-    aggressive_minify: bool,
-    output_file: Option<&std::path::PathBuf>,
-) -> Result<(), BundlerError> {
-    let project_path = command.project_path();
-    let transform_config = command.get_transform_config().unwrap();
+fn handle_bundle_command(cli: &Cli) -> Result<(), BundlerError> {
+    let project_path = cli.get_project_path();
+    let transform_config = cli.get_transform_config();
+    let verbose = cli.is_verbose();
+    let pretty = cli.is_pretty();
+    let minify = cli.is_minify();
+    let aggressive_minify = cli.is_aggressive_minify();
+    let output_file = cli.get_output();
 
     if verbose {
         eprintln!(
@@ -58,7 +148,7 @@ fn handle_bundle_command(
     }
 
     let bundler = Bundler::with_config(transform_config);
-    let mut bundled_code = bundler.bundle(project_path)?;
+    let mut bundled_code = bundler.bundle(&project_path)?;
 
     // Apply minification if requested
     if aggressive_minify {
