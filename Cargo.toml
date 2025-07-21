@@ -26,6 +26,7 @@ thiserror = "1.0"
 walkdir = "2.3"
 colored = "2.0"
 cargo_metadata = "0.18"
+prettyplease = "0.2"
 
 [dev-dependencies]
 tempfile = "3.0"

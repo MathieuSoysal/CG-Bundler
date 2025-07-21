@@ -52,7 +52,8 @@ impl Bundler {
 
         transformer.transform_file(&mut file)?;
 
-        Ok(quote::quote!(#file).to_string())
+        let bundled_code = prettyplease::unparse(&file);
+        Ok(bundled_code)
     }
 
     /// Get the current configuration
