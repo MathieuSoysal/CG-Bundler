@@ -8,7 +8,7 @@ repository = "https://github.com/MathieuSoysal/cg-bundler"
 homepage = "https://github.com/MathieuSoysal/cg-bundler"
 documentation = "https://docs.rs/cg-bundler"
 readme = "README.md"
-keywords = ["minify", "compress", "single-file", "rust", "cli", "code-compression", "bundler"]
+keywords = ["minify", "compress", "rust", "code-compression", "bundler"]
 categories = ["command-line-utilities", "development-tools"]
 edition = "2021"
 
