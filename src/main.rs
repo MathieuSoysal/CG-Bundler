@@ -14,9 +14,11 @@ fn main() {
         Commands::Bundle {
             output,
             pretty,
+            minify,
+            m2,
             verbose,
             ..
-        } => handle_bundle_command(&cli.command, *verbose, *pretty, output.as_ref()),
+        } => handle_bundle_command(&cli.command, *verbose, *pretty, *minify || *m2, *m2, output.as_ref()),
         Commands::Validate {
             project_path,
             verbose,
@@ -34,6 +36,8 @@ fn handle_bundle_command(
     command: &Commands,
     verbose: bool,
     pretty: bool,
+    minify: bool,
+    aggressive_minify: bool,
     output_file: Option<&std::path::PathBuf>,
 ) -> Result<(), BundlerError> {
     let project_path = command.project_path();
@@ -49,13 +53,27 @@ fn handle_bundle_command(
         eprintln!("  Remove tests: {}", transform_config.remove_tests);
         eprintln!("  Remove docs: {}", transform_config.remove_docs);
         eprintln!("  Expand modules: {}", transform_config.expand_modules);
+        eprintln!("  Minify: {}", transform_config.minify);
+        eprintln!("  Aggressive minify: {}", transform_config.aggressive_minify);
     }
 
     let bundler = Bundler::with_config(transform_config);
     let mut bundled_code = bundler.bundle(project_path)?;
 
-    // Format with rustfmt if requested and available
-    if pretty {
+    // Apply minification if requested
+    if aggressive_minify {
+        if verbose {
+            eprintln!("{}", "Applying aggressive minification...".yellow());
+        }
+        bundled_code = aggressive_minify_code(&bundled_code);
+    } else if minify {
+        if verbose {
+            eprintln!("{}", "Minifying output to single line...".yellow());
+        }
+        bundled_code = minify_code(&bundled_code);
+    }
+    // Format with rustfmt if requested and available (only if not minifying)
+    else if pretty {
         if verbose {
             eprintln!("{}", "Formatting with rustfmt...".yellow());
         }
@@ -223,4 +241,81 @@ fn format_with_rustfmt(code: &str, verbose: bool) -> Option<String> {
     } else {
         None
     }
+}
+
+fn minify_code(code: &str) -> String {
+    code.lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<&str>>()
+        .join(" ")
+}
+
+fn aggressive_minify_code(code: &str) -> String {
+    // First apply basic minification
+    let mut result = minify_code(code);
+    
+    // Then apply aggressive replacements to remove more whitespace
+    result = result
+        // Remove spaces around operators and punctuation
+        .replace(" = ", "=")
+        .replace(" + ", "+")
+        .replace(" - ", "-")
+        .replace(" * ", "*")
+        .replace(" / ", "/")
+        .replace(" % ", "%")
+        .replace(" & ", "&")
+        .replace(" | ", "|")
+        .replace(" ^ ", "^")
+        .replace(" < ", "<")
+        .replace(" > ", ">")
+        .replace(" == ", "==")
+        .replace(" != ", "!=")
+        .replace(" <= ", "<=")
+        .replace(" >= ", ">=")
+        .replace(" && ", "&&")
+        .replace(" || ", "||")
+        .replace(" -> ", "->")
+        .replace(" => ", "=>")
+        // Remove spaces around punctuation
+        .replace(" , ", ",")
+        .replace(" ; ", ";")
+        .replace(" : ", ":")
+        .replace(" :: ", "::")
+        .replace(" . ", ".")
+        // Remove spaces around brackets and parentheses
+        .replace(" ( ", "(")
+        .replace(" ) ", ")")
+        .replace(" [ ", "[")
+        .replace(" ] ", "]")
+        .replace(" { ", "{")
+        .replace(" } ", "}")
+        // Remove spaces before punctuation
+        .replace(" ,", ",")
+        .replace(" ;", ";")
+        .replace(" :", ":")
+        .replace(" .", ".")
+        .replace(" (", "(")
+        .replace(" )", ")")
+        .replace(" [", "[")
+        .replace(" ]", "]")
+        .replace(" {", "{")
+        .replace(" }", "}")
+        // Remove spaces after punctuation
+        .replace(", ", ",")
+        .replace("; ", ";")
+        .replace("( ", "(")
+        .replace("[ ", "[")
+        .replace("{ ", "{")
+        // Remove spaces around keywords (be careful with keywords that need spaces)
+        .replace(" if ", "if")
+        .replace(" else ", "else")
+        .replace(" while ", "while")
+        .replace(" for ", "for")
+        .replace(" match ", "match")
+        .replace(" return ", "return")
+        .replace(" break ", "break")
+        .replace(" continue ", "continue");
+    
+    result
 }

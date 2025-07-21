@@ -12,6 +12,8 @@ pub struct TransformConfig {
     pub remove_tests: bool,
     pub remove_docs: bool,
     pub expand_modules: bool,
+    pub minify: bool,
+    pub aggressive_minify: bool,
 }
 
 impl Default for TransformConfig {
@@ -20,6 +22,8 @@ impl Default for TransformConfig {
             remove_tests: true,
             remove_docs: true,
             expand_modules: true,
+            minify: false,
+            aggressive_minify: false,
         }
     }
 }
@@ -421,6 +425,8 @@ mod tests {
         assert!(config.remove_tests);
         assert!(config.remove_docs);
         assert!(config.expand_modules);
+        assert!(!config.minify);
+        assert!(!config.aggressive_minify);
     }
 
     #[test]

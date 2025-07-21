@@ -96,6 +96,8 @@ mod tests {
             remove_tests: false,
             remove_docs: false,
             expand_modules: true,
+            minify: false,
+            aggressive_minify: false,
         };
 
         let bundler = Bundler::with_config(config);

@@ -42,6 +42,14 @@ pub enum Commands {
         #[arg(long)]
         pretty: bool,
 
+        /// Minify the output to a single line
+        #[arg(short, long)]
+        minify: bool,
+
+        /// Aggressive minify with whitespace replacements (implies -m)
+        #[arg(long)]
+        m2: bool,
+
         /// Verbose output
         #[arg(short, long)]
         verbose: bool,
@@ -92,11 +100,15 @@ impl Commands {
                 keep_tests,
                 keep_docs,
                 no_expand_modules,
+                minify,
+                m2,
                 ..
             } => Some(TransformConfig {
                 remove_tests: !keep_tests,
                 remove_docs: !keep_docs,
                 expand_modules: !no_expand_modules,
+                minify: *minify || *m2, // m2 implies minify
+                aggressive_minify: *m2,
             }),
             _ => None,
         }
@@ -186,6 +198,8 @@ mod tests {
             keep_docs: false,
             no_expand_modules: true,
             pretty: false,
+            minify: false,
+            m2: false,
             verbose: false,
         };
 
@@ -213,6 +227,8 @@ mod tests {
             keep_docs: false,
             no_expand_modules: false,
             pretty: false,
+            minify: false,
+            m2: false,
             verbose: false,
         };
 
@@ -228,6 +244,8 @@ mod tests {
             keep_docs: false,
             no_expand_modules: false,
             pretty: false,
+            minify: false,
+            m2: false,
             verbose: true,
         };
 
@@ -240,6 +258,8 @@ mod tests {
             keep_docs: false,
             no_expand_modules: false,
             pretty: false,
+            minify: false,
+            m2: false,
             verbose: false,
         };
 
