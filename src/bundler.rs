@@ -35,12 +35,12 @@ impl Bundler {
 
         let code =
             FileManager::read_file(binary_source_path).map_err(|e| BundlerError::Parsing {
-                message: format!("Failed to read binary target source: {}", e),
+                message: format!("Failed to read binary target source: {e}"),
                 file_path: Some(binary_source_path.to_path_buf()),
             })?;
 
         let mut file = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
-            message: format!("Failed to parse binary target source: {}", e),
+            message: format!("Failed to parse binary target source: {e}"),
             file_path: Some(binary_source_path.to_path_buf()),
         })?;
 

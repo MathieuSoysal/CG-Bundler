@@ -23,7 +23,7 @@ impl CargoProject {
             .manifest_path(&manifest_path)
             .exec()
             .map_err(|e| BundlerError::CargoMetadata {
-                message: format!("Failed to obtain cargo metadata: {}", e),
+                message: format!("Failed to obtain cargo metadata: {e}"),
                 source: Some(e),
             })?;
 

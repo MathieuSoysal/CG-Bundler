@@ -273,7 +273,7 @@ impl<'a> CodeTransformer<'a> {
                 })?;
 
                 let lib = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
-                    message: format!("Failed to parse lib.rs: {}", e),
+                    message: format!("Failed to parse lib.rs: {e}"),
                     file_path: Some(lib_path),
                 })?;
 
@@ -307,8 +307,8 @@ impl<'a> CodeTransformer<'a> {
         let (base_path, code) = FileManager::find_module_file(self.base_path, &name)?;
 
         let mut file = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
-            message: format!("Failed to parse module file: {}", e),
-            file_path: Some(base_path.join(format!("{}.rs", name))),
+            message: format!("Failed to parse module file: {e}"),
+            file_path: Some(base_path.join(format!("{name}.rs"))),
         })?;
 
         // Use the original config for expansion to ensure consistent behavior
@@ -381,7 +381,7 @@ impl<'a> VisitMut for CodeTransformer<'a> {
         }
 
         if let Err(e) = self.expand_items(&mut file.items) {
-            eprintln!("Warning: Failed to expand items: {}", e);
+            eprintln!("Warning: Failed to expand items: {e}");
         }
 
         for item in &mut file.items {

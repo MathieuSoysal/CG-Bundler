@@ -35,29 +35,28 @@ impl fmt::Display for BundlerError {
         match self {
             BundlerError::Io { source, path } => {
                 if let Some(path) = path {
-                    write!(f, "IO error with file '{}': {}", path.display(), source)
+                    write!(f, "IO error with file '{}': {source}", path.display())
                 } else {
-                    write!(f, "IO error: {}", source)
+                    write!(f, "IO error: {source}")
                 }
             }
             BundlerError::CargoMetadata { message, .. } => {
-                write!(f, "Cargo metadata error: {}", message)
+                write!(f, "Cargo metadata error: {message}")
             }
             BundlerError::Parsing { message, file_path } => {
                 if let Some(path) = file_path {
-                    write!(f, "Parsing error in '{}': {}", path.display(), message)
+                    write!(f, "Parsing error in '{}': {message}", path.display())
                 } else {
-                    write!(f, "Parsing error: {}", message)
+                    write!(f, "Parsing error: {message}")
                 }
             }
             BundlerError::ProjectStructure { message } => {
-                write!(f, "Project structure error: {}", message)
+                write!(f, "Project structure error: {message}")
             }
             BundlerError::MultipleBinaryTargets { target_count } => {
                 write!(
                     f,
-                    "Multiple binary targets found ({}). Only single binary target is supported.",
-                    target_count
+                    "Multiple binary targets found ({target_count}). Only single binary target is supported."
                 )
             }
             BundlerError::NoBinaryTarget => {
@@ -66,8 +65,7 @@ impl fmt::Display for BundlerError {
             BundlerError::MultipleLibraryTargets { target_count } => {
                 write!(
                     f,
-                    "Multiple library targets found ({}). Only single library target is supported.",
-                    target_count
+                    "Multiple library targets found ({target_count}). Only single library target is supported."
                 )
             }
         }

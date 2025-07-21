@@ -44,7 +44,7 @@ impl FileManager {
             // Look for module_name.rs in base_path, submodules will be in base_path/module_name/
             (
                 base_path.to_path_buf(),
-                format!("{}.rs", module_name),
+                format!("{module_name}.rs"),
                 base_path.join(module_name),
             ),
             // Look for mod.rs in base_path/module_name/, submodules will be in base_path/module_name/
@@ -63,7 +63,7 @@ impl FileManager {
         }
 
         Err(BundlerError::ProjectStructure {
-            message: format!("Module '{}' not found in expected locations", module_name),
+            message: format!("Module '{module_name}' not found in expected locations"),
         })
     }
 }

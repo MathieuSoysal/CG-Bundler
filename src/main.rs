@@ -202,7 +202,7 @@ fn handle_bundle_command(cli: &Cli) -> Result<(), BundlerError> {
             }
         }
         None => {
-            print!("{}", bundled_code);
+            print!("{bundled_code}");
         }
     }
 
@@ -244,7 +244,7 @@ fn handle_validate_command(
     // Try to parse the bundled code
     let bundled_code = bundler.bundle_project(&project)?;
     syn::parse_file(&bundled_code).map_err(|e| BundlerError::Parsing {
-        message: format!("Generated code is not valid Rust: {}", e),
+        message: format!("Generated code is not valid Rust: {e}"),
         file_path: None,
     })?;
 
@@ -366,7 +366,7 @@ fn aggressive_minify_code(code: &str) -> String {
             let mut string_literal = String::from('"');
             let mut escaped = false;
 
-            while let Some(str_ch) = chars.next() {
+            for str_ch in chars.by_ref() {
                 string_literal.push(str_ch);
                 if str_ch == '\\' && !escaped {
                     escaped = true;
@@ -378,7 +378,7 @@ fn aggressive_minify_code(code: &str) -> String {
             }
 
             // Store the string literal and use a placeholder
-            let placeholder = format!("__STRING_LITERAL_{}__", placeholder_index);
+            let placeholder = format!("__STRING_LITERAL_{placeholder_index}__");
             string_literals.push(string_literal);
             output.push_str(&placeholder);
             placeholder_index += 1;
@@ -442,7 +442,7 @@ fn aggressive_minify_code(code: &str) -> String {
 
     // Restore string literals
     for (i, string_literal) in string_literals.into_iter().enumerate() {
-        let placeholder = format!("__STRING_LITERAL_{}__", i);
+        let placeholder = format!("__STRING_LITERAL_{i}__");
         result = result.replace(&placeholder, &string_literal);
     }
 
