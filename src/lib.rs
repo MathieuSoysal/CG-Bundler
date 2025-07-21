@@ -5,7 +5,6 @@
 
 pub mod bundler;
 pub mod cargo_project;
-pub mod cli;
 pub mod error;
 pub mod file_manager;
 pub mod transformer;
