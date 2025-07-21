@@ -1,0 +1,374 @@
+# CG Bundler 🔧
+
+<div align="center">
+
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Crates.io](https://img.shields.io/crates/v/cg-bundler.svg)](https://crates.io/crates/cg-bundler)
+[![Documentation](https://docs.rs/cg-bundler/badge.svg)](https://docs.rs/cg-bundler)
+[![Build Status](https://github.com/MathieuSoysal/cg-bundler/workflows/CI/badge.svg)](https://github.com/MathieuSoysal/cg-bundler/actions)
+
+**A powerful Rust code bundler that combines multiple source files into a single, optimized file for competitive programming and code distribution.**
+
+[📖 Documentation](https://docs.rs/cg-bundler) | [🚀 Getting Started](#getting-started) | [💡 Examples](#examples) | [🤝 Contributing](#contributing)
+
+</div>
+
+---
+
+## ✨ Features
+
+- 🚀 **Fast bundling** - Efficiently combines Rust projects into single files
+- 🔍 **Smart module expansion** - Automatically resolves and inlines module dependencies
+- 🧹 **Code optimization** - Removes tests, documentation, and unused code
+- 🎛️ **Configurable transformation** - Customize what gets included/excluded
+- 📦 **Cargo integration** - Works seamlessly with standard Cargo projects
+- 🔧 **CLI & Library** - Use as command-line tool or integrate into your workflow
+- ⚡ **Minification** - Optional code minification for size optimization
+- 🛡️ **Error handling** - Comprehensive error reporting with context
+
+## 🚀 Getting Started
+
+### Installation
+
+#### From Crates.io (Recommended)
+```bash
+cargo install cg-bundler
+```
+
+#### From Source
+```bash
+git clone https://github.com/MathieuSoysal/cg-bundler.git
+cd cg-bundler
+cargo install --path .
+```
+
+#### As Library Dependency
+Add to your `Cargo.toml`:
+```toml
+[dependencies]
+cg-bundler = "0.1.0"
+```
+
+### Quick Start
+
+#### Command Line Usage
+```bash
+# Bundle current directory
+cg-bundler
+
+# Bundle specific project
+cg-bundler /path/to/rust/project
+
+# Output to file
+cg-bundler -o bundled.rs
+
+# Minify output
+cg-bundler --minify -o compressed.rs
+
+# Keep documentation and tests
+cg-bundler --keep-docs --keep-tests
+```
+
+#### Library Usage
+```rust
+use cg_bundler::{bundle, Bundler, TransformConfig};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Simple bundling
+    let bundled_code = bundle("./my_project")?;
+    println!("{}", bundled_code);
+
+    // Advanced configuration
+    let config = TransformConfig {
+        remove_tests: true,
+        remove_docs: true,
+        expand_modules: true,
+        minify: false,
+        aggressive_minify: false,
+    };
+    
+    let bundler = Bundler::with_config(config);
+    let result = bundler.bundle("./my_project")?;
+    
+    Ok(())
+}
+```
+
+## 📋 Requirements
+
+- **Rust 1.75.0** or later
+- **Cargo** (comes with Rust)
+- Compatible with **all Rust editions** (2015, 2018, 2021)
+
+## 🎯 Use Cases
+
+### Competitive Programming
+Perfect for platforms like Codeforces, AtCoder, or Codingame where you need to submit a single source file:
+
+```bash
+# Bundle your modular solution into a single file
+cg-bundler --minify --output solution.rs ./my-contest-solution/
+```
+
+### Code Distribution
+Share your Rust libraries as single files for easy integration:
+
+```bash
+# Create a distributable single-file version
+cg-bundler --keep-docs --output my-lib-standalone.rs ./my-library/
+```
+
+### CI/CD Integration
+Integrate into your build pipeline:
+
+```bash
+# Validate that your project can be bundled
+cg-bundler --validate
+
+# Get project information
+cg-bundler --info
+```
+
+## 💡 Examples
+
+### Basic Project Structure
+```
+my_project/
+├── Cargo.toml
+├── src/
+│   ├── main.rs
+│   ├── lib.rs          # Optional
+│   ├── utils.rs
+│   ├── game/
+│   │   ├── mod.rs
+│   │   └── engine.rs
+│   └── ai/
+│       ├── mod.rs
+│       └── strategy.rs
+```
+
+### Input: Modular Code
+```rust
+// src/main.rs
+use my_project::game::GameEngine;
+use my_project::ai::Strategy;
+
+fn main() {
+    let engine = GameEngine::new();
+    let strategy = Strategy::default();
+    engine.run_with_strategy(strategy);
+}
+```
+
+```rust
+// src/game/mod.rs
+pub mod engine;
+pub use engine::GameEngine;
+```
+
+### Output: Bundled Code
+```rust
+// All modules expanded and combined
+pub mod game {
+    pub struct GameEngine { /* ... */ }
+    impl GameEngine {
+        pub fn new() -> Self { /* ... */ }
+        pub fn run_with_strategy(&self, strategy: Strategy) { /* ... */ }
+    }
+}
+
+pub mod ai {
+    pub struct Strategy { /* ... */ }
+    impl Default for Strategy { /* ... */ }
+}
+
+use game::GameEngine;
+use ai::Strategy;
+
+fn main() {
+    let engine = GameEngine::new();
+    let strategy = Strategy::default();
+    engine.run_with_strategy(strategy);
+}
+```
+
+## 🎛️ CLI Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--output` | `-o` | Output file path (stdout if not specified) |
+| `--keep-tests` | | Keep test code in the bundled output |
+| `--keep-docs` | | Keep documentation comments |
+| `--no-expand-modules` | | Disable module expansion |
+| `--pretty` | | Pretty print the output (format with rustfmt) |
+| `--minify` | `-m` | Minify the output to a single line |
+| `--m2` | | Aggressive minify with whitespace replacements |
+| `--verbose` | `-v` | Verbose output |
+| `--validate` | | Validate project can be bundled without errors |
+| `--info` | | Show project structure information |
+| `--help` | `-h` | Print help information |
+| `--version` | `-V` | Print version information |
+
+## 🏗️ Project Structure
+
+```
+cg-bundler/
+├── src/
+│   ├── main.rs           # CLI application entry point
+│   ├── lib.rs            # Library root with public API
+│   ├── bundler.rs        # Main bundling orchestration
+│   ├── cargo_project.rs  # Cargo project analysis
+│   ├── transformer.rs    # AST transformation logic
+│   ├── file_manager.rs   # File I/O operations
+│   ├── error.rs          # Error types and handling
+│   └── cli.rs            # CLI argument parsing
+├── tests/
+│   ├── integration_tests.rs  # End-to-end tests
+│   └── unit_tests.rs         # Unit tests
+├── test_project/         # Sample project for testing
+└── target/              # Build artifacts
+```
+
+## 🧪 Testing
+
+Run the comprehensive test suite:
+
+```bash
+# Run all tests
+cargo test
+
+# Run with verbose output
+cargo test -- --nocapture
+
+# Run specific test categories
+cargo test integration
+cargo test unit_tests
+
+# Test with different configurations
+cargo test test_bundle_contains_expected_structures
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### "No binary target found"
+Ensure your `Cargo.toml` has a binary target defined:
+```toml
+[[bin]]
+name = "my_program"
+path = "src/main.rs"
+```
+
+#### "Multiple binary targets found"
+CG Bundler currently supports only single binary targets. Use `--target` flag if your cargo supports it, or temporarily remove extra binary targets.
+
+#### "Module not found"
+Ensure your module structure follows Rust conventions:
+- `mod.rs` files for directory modules
+- `.rs` files for simple modules
+- Proper `mod` declarations in parent modules
+
+#### "Parsing errors"
+Make sure your code compiles successfully with `cargo check` before bundling.
+
+### Debug Mode
+Enable verbose output for detailed debugging:
+```bash
+cg-bundler --verbose ./my_project
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+### Development Setup
+```bash
+# Clone the repository
+git clone https://github.com/MathieuSoysal/cg-bundler.git
+cd cg-bundler
+
+# Install dependencies and build
+cargo build
+
+# Run tests
+cargo test
+
+# Check formatting and linting
+cargo fmt --check
+cargo clippy -- -D warnings
+```
+
+### Contributing Guidelines
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Make** your changes with tests
+4. **Ensure** all tests pass (`cargo test`)
+5. **Format** your code (`cargo fmt`)
+6. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+7. **Push** to the branch (`git push origin feature/amazing-feature`)
+8. **Open** a Pull Request
+
+### Code Standards
+- Follow [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
+- Add tests for new functionality
+- Update documentation for public APIs
+- Ensure backward compatibility
+
+### Reporting Issues
+Found a bug? Have a feature request? Please [create an issue](https://github.com/MathieuSoysal/cg-bundler/issues) with:
+- Clear description of the problem/feature
+- Steps to reproduce (for bugs)
+- Expected vs actual behavior
+- Your environment (OS, Rust version, etc.)
+
+## 📄 License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+```
+MIT License
+
+Copyright (c) 2024 CG Bundler Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+```
+
+## 🙏 Acknowledgments
+
+- The **Rust Community** for excellent tooling and ecosystem
+- **Syn crate** for powerful Rust AST parsing
+- **Cargo** for providing metadata APIs
+- **Contributors** who help improve this project
+
+## 📊 Project Stats
+
+- **Language**: Rust 🦀
+- **Dependencies**: Minimal, focused on core functionality
+- **Performance**: Optimized for large codebases
+- **Compatibility**: Works with all major Rust project structures
+- **Test Coverage**: Comprehensive test suite with integration and unit tests
+
+---
+
+<div align="center">
+
+**Made with ❤️ by the Rust community**
+
+[⭐ Star us on GitHub](https://github.com/MathieuSoysal/cg-bundler) | [🐛 Report Bug](https://github.com/MathieuSoysal/cg-bundler/issues) | [💡 Request Feature](https://github.com/MathieuSoysal/cg-bundler/issues)
+
+</div>
