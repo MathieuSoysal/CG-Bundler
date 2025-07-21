@@ -76,8 +76,8 @@ jobs:
             
             **Linux/macOS:**
             ```bash
-            chmod +x rust-singler-*
-            sudo mv rust-singler-* /usr/local/bin/rust-singler
+            chmod +x cg-bundler-*
+            sudo mv cg-bundler-* /usr/local/bin/cg-bundler
             ```
             
             **Windows:**
@@ -98,25 +98,25 @@ jobs:
           # Linux targets
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            name: rust-singler-linux-amd64
+            name: cg-bundler-linux-amd64
             
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            name: rust-singler-linux-arm64
+            name: cg-bundler-linux-arm64
             
           # macOS targets
           - target: x86_64-apple-darwin
             os: macos-latest
-            name: rust-singler-macos-amd64
+            name: cg-bundler-macos-amd64
             
           - target: aarch64-apple-darwin
             os: macos-latest
-            name: rust-singler-macos-arm64
+            name: cg-bundler-macos-arm64
             
           # Windows targets
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            name: rust-singler-windows-amd64.exe
+            name: cg-bundler-windows-amd64.exe
 
     steps:
       - name: Checkout code
@@ -169,18 +169,18 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           if command -v strip >/dev/null 2>&1; then
-            strip target/${{ matrix.target }}/release/rust-singler
+            strip target/${{ matrix.target }}/release/cg-bundler
           fi
 
       - name: Prepare binary for upload (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          cp target/${{ matrix.target }}/release/rust-singler ${{ matrix.name }}
+          cp target/${{ matrix.target }}/release/cg-bundler ${{ matrix.name }}
 
       - name: Prepare binary for upload (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          copy target\${{ matrix.target }}\release\rust-singler.exe ${{ matrix.name }}
+          copy target\${{ matrix.target }}\release\cg-bundler.exe ${{ matrix.name }}
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1

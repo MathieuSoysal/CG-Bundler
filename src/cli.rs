@@ -5,10 +5,10 @@ use crate::transformer::TransformConfig;
 
 /// A Rust code bundler that combines multiple source files into a single file
 #[derive(Parser, Debug)]
-#[command(name = "rust-singler")]
+#[command(name = "cg-bundler")]
 #[command(about = "A Rust code bundler for creating single-file applications")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(author = "Rust Singler Contributors")]
+#[command(author = "CG Bundler Contributors")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_bundle_command_parsing() {
         let args = vec![
-            "rust-singler",
+            "cg-bundler",
             "bundle",
             "/path/to/project",
             "--output",
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_validate_command_parsing() {
-        let args = vec!["rust-singler", "validate", "/path/to/project", "--verbose"];
+        let args = vec!["cg-bundler", "validate", "/path/to/project", "--verbose"];
 
         let cli = Cli::try_parse_from(args).unwrap();
 
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_info_command_parsing() {
-        let args = vec!["rust-singler", "info", "/path/to/project"];
+        let args = vec!["cg-bundler", "info", "/path/to/project"];
 
         let cli = Cli::try_parse_from(args).unwrap();
 

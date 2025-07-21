@@ -2,7 +2,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-/// Custom error types for the rust-singler application
+/// Custom error types for the cg-bundler application
 #[derive(Debug)]
 pub enum BundlerError {
     /// IO related errors (file reading, writing, etc.)

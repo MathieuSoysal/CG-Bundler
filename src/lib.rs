@@ -42,7 +42,7 @@ use std::path::Path;
 /// # Example
 ///
 /// ```rust,no_run
-/// use rust_singler::bundle;
+/// use cg_bundler::bundle;
 ///
 /// let bundled_code = bundle("./my_project").unwrap();
 /// println!("{}", bundled_code);

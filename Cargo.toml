@@ -1,11 +1,11 @@
 [package]
-name = "rust-singler"
+name = "cg-bundler"
 version = "0.1.0"
-authors = ["Rust Singler Contributors"]
+authors = ["CG Bundler Contributors"]
 description = "A Rust code compression tool that minifies Rust codebases into single-line format"
-documentation = "https://docs.rs/rust-singler"
-homepage = "https://github.com/MathieuSoysal/rust-singler"
-repository = "https://github.com/MathieuSoysal/rust-singler"
+documentation = "https://docs.rs/cg-bundler"
+homepage = "https://github.com/MathieuSoysal/cg-bundler"
+repository = "https://github.com/MathieuSoysal/cg-bundler"
 keywords = ["minify", "compress", "single-line", "rust", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 readme = "README.md"
@@ -13,7 +13,7 @@ license = "MIT"
 edition = "2021"
 
 [[bin]]
-name = "rust-singler"
+name = "cg-bundler"
 path = "src/main.rs"
 
 [dependencies]

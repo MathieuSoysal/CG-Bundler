@@ -1,5 +1,5 @@
-use rust_singler::bundle;
-use rust_singler::{Bundler, CargoProject, TransformConfig}; // Added imports for new tests
+use cg_bundler::bundle;
+use cg_bundler::{Bundler, CargoProject, TransformConfig}; // Added imports for new tests
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
@@ -1284,7 +1284,7 @@ fn main() {
 /// Test error display formatting
 #[test]
 fn test_error_display_formatting() {
-    use rust_singler::error::BundlerError;
+    use cg_bundler::error::BundlerError;
     use std::io;
     
     // Test IO error with path

@@ -59,8 +59,8 @@ jobs:
       - name: Test CLI functionality
         run: |
           # Test basic CLI functionality
-          ./target/release/rust-singler --version
-          ./target/release/rust-singler --help
+          ./target/release/cg-bundler --version
+          ./target/release/cg-bundler --help
 
   build-cross-platform:
     name: Build on ${{ matrix.os }}
@@ -100,12 +100,12 @@ jobs:
       - name: Test binary (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          ./target/release/rust-singler --version
+          ./target/release/cg-bundler --version
 
       - name: Test binary (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          .\target\release\rust-singler.exe --version
+          .\target\release\cg-bundler.exe --version
 
   security-audit:
     name: Security Audit

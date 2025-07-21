@@ -1,7 +1,7 @@
-use rust_singler::error::BundlerError;
-use rust_singler::transformer::{TransformConfig, CodeTransformer};
-use rust_singler::file_manager::FileManager;
-use rust_singler::Bundler;
+use cg_bundler::error::BundlerError;
+use cg_bundler::transformer::{TransformConfig, CodeTransformer};
+use cg_bundler::file_manager::FileManager;
+use cg_bundler::Bundler;
 use std::path::Path;
 use tempfile::TempDir;
 use std::fs;

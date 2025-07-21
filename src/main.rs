@@ -3,9 +3,9 @@ use colored::*;
 use std::fs;
 use std::process;
 
-use rust_singler::cli::{Cli, Commands};
-use rust_singler::error::BundlerError;
-use rust_singler::{Bundler, CargoProject};
+use cg_bundler::cli::{Cli, Commands};
+use cg_bundler::error::BundlerError;
+use cg_bundler::{Bundler, CargoProject};
 
 fn main() {
     let cli = Cli::parse();
