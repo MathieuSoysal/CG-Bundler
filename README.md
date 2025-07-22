@@ -24,6 +24,9 @@ _With cargo :_
 ```bash
 cargo install cg-bundler
 cg-bundler > output.rs
+
+# Or with watch mode for live updates
+cg-bundler --watch -o output.rs
 ```
 
 _Without cargo :_
@@ -42,6 +45,7 @@ bash cg-bundler > output.rs
 - 🔧 **CLI & Library** - Use as command-line tool or integrate into your workflow
 - ⚡ **Minification** - Optional code minification for size optimization
 - 🛡️ **Error handling** - Comprehensive error reporting with context
+- 🔄 **Watch mode** - **NEW** Automatic rebuilding on file changes for live development
 
 ## 🚀 Getting Started
 
@@ -84,6 +88,12 @@ cg-bundler --minify -o compressed.rs
 
 # Keep documentation and tests
 cg-bundler --keep-docs --keep-tests
+
+# NEW: Watch mode for live development
+cg-bundler --watch -o output.rs
+
+# Watch with verbose output and fast response
+cg-bundler --watch -o output.rs --verbose --debounce 200
 ```
 
 #### Library Usage
@@ -223,8 +233,77 @@ fn main() {
 | `--verbose` | `-v` | Verbose output |
 | `--validate` | | Validate project can be bundled without errors |
 | `--info` | | Show project structure information |
+| `--watch` | `-w` | **NEW** Watch for file changes and rebuild automatically |
+| `--src-dir` | | Source directory to watch (default: src) |
+| `--debounce` | | Debounce delay in milliseconds (default: 500) |
 | `--help` | `-h` | Print help information |
 | `--version` | `-V` | Print version information |
+
+## 🔄 Watch Mode
+
+**NEW in v1.0.1**: CG Bundler now supports automatic rebuilding when source files change!
+
+### What's New
+- 🆕 **`--watch` flag**: Monitor source files and rebuild automatically  
+- 🆕 **`--src-dir` option**: Specify custom directory to watch
+- 🆕 **`--debounce` option**: Control rebuild timing for optimal performance
+- 🛠️ **Built-in file monitoring**: No external tools needed
+- 🎨 **Rich feedback**: Colored output with status indicators
+
+### Basic Watch Usage
+```bash
+# Watch the current project and rebuild on changes
+cg-bundler --watch -o output.rs
+
+# Watch with verbose output to see what's happening
+cg-bundler --watch -o output.rs --verbose
+
+# Watch with faster response time
+cg-bundler --watch -o output.rs --debounce 200
+```
+
+### Advanced Watch Configuration
+```bash
+# Watch a specific project directory
+cg-bundler my-project --watch -o bundled.rs
+
+# Watch custom source directory
+cg-bundler --watch --src-dir lib -o output.rs
+
+# Watch with minification enabled
+cg-bundler --watch -o output.rs --minify
+
+# Watch with all optimizations
+cg-bundler --watch -o output.rs --pretty --keep-docs --verbose
+```
+
+### Watch Mode Features
+- 🔍 **Smart File Monitoring** - Only rebuilds on `.rs` file changes
+- ⚡ **Debounced Rebuilding** - Prevents rapid consecutive rebuilds
+- 🎯 **Selective Watching** - Configure which directory to monitor
+- 🛡️ **Error Resilience** - Continues watching even if builds fail
+- 🎨 **Rich Output** - Colored status messages with emojis
+- 🛑 **Graceful Shutdown** - Clean exit with Ctrl+C
+
+### Perfect for Development Workflows
+```bash
+# Competitive programming: watch your solution as you code
+cg-bundler contest-solution --watch -o solution.rs --minify
+
+# Library development: watch with documentation preserved
+cg-bundler my-lib --watch -o dist/my-lib.rs --keep-docs --pretty
+
+# Real-time feedback during coding
+cg-bundler --watch -o output.rs --verbose
+```
+
+Watch mode is perfect for:
+- **Competitive Programming**: Instant feedback as you develop solutions
+- **Rapid Prototyping**: See bundled results immediately
+- **CI/CD Development**: Test bundling behavior continuously
+- **Learning**: Understand how your code transforms in real-time
+
+> 📖 **For more detailed watch mode documentation, see [WATCH_MODE.md](WATCH_MODE.md)**
 
 ## 🏗️ Project Structure
 
@@ -293,7 +372,26 @@ Make sure your code compiles successfully with `cargo check` before bundling.
 Enable verbose output for detailed debugging:
 ```bash
 cg-bundler --verbose ./my_project
+
+# For watch mode debugging
+cg-bundler --watch --verbose -o output.rs
 ```
+
+### Watch Mode Troubleshooting
+
+#### Watch not detecting changes
+- Ensure you're editing files in the watched directory (default: `src/`)
+- Use `--src-dir` to specify a different directory to watch
+- Only `.rs` files trigger rebuilds
+
+#### Too many rebuilds
+- Increase debounce delay: `--debounce 1000` (1 second)
+- Check if your editor creates temporary files in the source directory
+
+#### Watch mode not starting
+- Verify the source directory exists
+- Check file permissions for the project directory
+- Ensure you have the latest version with watch support
 
 ## 🤝 Contributing
 
