@@ -1,6 +1,6 @@
 [package]
 name = "cg-bundler"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["MathieuSoysal"]
 description = "A Rust code compression tool that minifies Rust codebases into single file or one-line format"
 license = "MIT"

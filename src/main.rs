@@ -6,6 +6,19 @@ use std::process;
 
 use cg_bundler::{Bundler, BundlerError, CargoProject, TransformConfig};
 
+/// Display bug report information to the user
+fn display_bug_report_info() {
+    eprintln!();
+    eprintln!("{}", "━".repeat(60).bright_yellow());
+    eprintln!("{}", "💡 Need help or found a bug?".bright_yellow().bold());
+    eprintln!();
+    eprintln!("{}", "  Please report issues, request features, or get support at:".yellow());
+    eprintln!("{}", "  🔗 https://github.com/MathieuSoysal/CG-Bundler/issues/new".blue().bold());
+    eprintln!();
+    eprintln!("{}", "  Your feedback helps improve CG-Bundler for everyone!".yellow());
+    eprintln!("{}", "━".repeat(60).bright_yellow());
+}
+
 /// A Rust code bundler that combines multiple source files into a single file
 #[derive(Parser, Debug)]
 #[command(name = "cg-bundler")]
@@ -13,7 +26,7 @@ use cg_bundler::{Bundler, BundlerError, CargoProject, TransformConfig};
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(author = "CG Bundler Contributors")]
 #[command(
-    long_about = "A Rust code bundler that combines multiple source files into a single file.\nBy default, bundles the current directory or the specified project path."
+    long_about = "A Rust code bundler that combines multiple source files into a single file.\nBy default, bundles the current directory or the specified project path.\n\n🐛 Found a bug or need help?\n   Report issues: https://github.com/MathieuSoysal/CG-Bundler/issues/new\n\n📖 Documentation:\n   https://docs.rs/cg-bundler"
 )]
 pub struct Cli {
     /// Path to the Cargo project directory (defaults to current directory)
@@ -124,6 +137,7 @@ fn main() {
 
     if let Err(e) = result {
         eprintln!("{} {}", "Error:".red().bold(), e);
+        display_bug_report_info();
         process::exit(1);
     }
 }
@@ -199,6 +213,9 @@ fn handle_bundle_command(cli: &Cli) -> Result<(), BundlerError> {
 
             if verbose {
                 eprintln!("{}", "Bundle complete!".green().bold());
+                eprintln!();
+                eprintln!("{}", "ℹ️  Issues or feedback? Visit:".cyan());
+                eprintln!("{}", "   🔗 https://github.com/MathieuSoysal/CG-Bundler/issues/new".blue());
             }
         }
         None => {
@@ -253,6 +270,13 @@ fn handle_validate_command(
     }
 
     println!("{}", "✓ Project validation successful".green().bold());
+    
+    if verbose {
+        eprintln!();
+        eprintln!("{}", "ℹ️  Need help or want to report an issue?".cyan());
+        eprintln!("{}", "   Visit: https://github.com/MathieuSoysal/CG-Bundler/issues/new".blue());
+    }
+    
     Ok(())
 }
 
@@ -304,6 +328,12 @@ fn handle_info_command(project_path: &std::path::PathBuf) -> Result<(), BundlerE
             println!("  {} {}", dep.name, dep.req);
         }
     }
+
+    println!();
+    println!("{}", "━".repeat(50).bright_blue());
+    println!("{}", "ℹ️  Need help or want to report an issue?".cyan().bold());
+    println!("{}", "   🔗 https://github.com/MathieuSoysal/CG-Bundler/issues/new".blue());
+    println!("{}", "━".repeat(50).bright_blue());
 
     Ok(())
 }
