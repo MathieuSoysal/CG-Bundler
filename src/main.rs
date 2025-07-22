@@ -554,7 +554,7 @@ fn handle_watch_command(cli: &Cli) -> Result<(), BundlerError> {
         let _ = shutdown_tx.send(());
     })
     .map_err(|e| BundlerError::Io {
-        source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+        source: std::io::Error::other(e.to_string()),
         path: None,
     })?;
 
@@ -568,14 +568,14 @@ fn handle_watch_command(cli: &Cli) -> Result<(), BundlerError> {
     // Set up file watcher
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(tx).map_err(|e| BundlerError::Io {
-        source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+        source: std::io::Error::other(e.to_string()),
         path: None,
     })?;
 
     watcher
         .watch(&watch_path, RecursiveMode::Recursive)
         .map_err(|e| BundlerError::Io {
-            source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+            source: std::io::Error::other(e.to_string()),
             path: Some(watch_path),
         })?;
 
