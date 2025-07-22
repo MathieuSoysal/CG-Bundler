@@ -7,6 +7,8 @@
 [![Crates.io](https://img.shields.io/crates/v/cg-bundler.svg)](https://crates.io/crates/cg-bundler)
 [![Documentation](https://docs.rs/cg-bundler/badge.svg)](https://docs.rs/cg-bundler)
 [![Build Status](https://github.com/MathieuSoysal/cg-bundler/workflows/CI/badge.svg)](https://github.com/MathieuSoysal/cg-bundler/actions)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=MathieuSoysal_CG-Bundler&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=MathieuSoysal_CG-Bundler)
+[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=MathieuSoysal_CG-Bundler)](https://sonarcloud.io/summary/new_code?id=MathieuSoysal_CG-Bundler)
 
 **A powerful Rust code bundler that combines multiple source files into a single, optimized file for competitive programming and code distribution.**
 
