@@ -86,6 +86,18 @@ pub struct Cli {
     /// Show information about the Cargo project structure (instead of bundling)
     #[arg(long, help = "Show information about the Cargo project structure")]
     pub info: bool,
+
+    /// Watch for file changes and rebuild automatically
+    #[arg(short, long, help = "Watch for file changes and rebuild automatically")]
+    pub watch: bool,
+
+    /// Source directory to watch (default: src)
+    #[arg(long, default_value = "src", help = "Source directory to watch")]
+    pub src_dir: String,
+
+    /// Debounce delay in milliseconds (default: 500)
+    #[arg(long, default_value = "500", help = "Debounce delay in milliseconds")]
+    pub debounce: u64,
 }
 
 impl Cli {
@@ -141,6 +153,8 @@ fn main() {
         handle_validate_command(&cli.get_project_path(), cli.is_verbose())
     } else if cli.info {
         handle_info_command(&cli.get_project_path())
+    } else if cli.watch {
+        handle_watch_command(&cli)
     } else {
         // Default behavior: bundle the project
         handle_bundle_command(&cli)
@@ -505,4 +519,126 @@ fn aggressive_minify_code(code: &str) -> String {
     }
 
     result
+}
+
+fn handle_watch_command(cli: &Cli) -> Result<(), BundlerError> {
+    use notify::{RecursiveMode, Watcher};
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    println!("{} Starting watch mode...", "🔍".green());
+    println!("{} Watching directory: {}", "📁".blue(), cli.src_dir);
+    if let Some(output) = &cli.output {
+        println!("{} Output file: {}", "📄".blue(), output.display());
+    } else {
+        println!("{} Output: stdout", "📄".blue());
+    }
+    println!("{} Debounce delay: {}ms", "⏱️".blue(), cli.debounce);
+    println!("{} Press Ctrl+C to stop\n", "ℹ️".yellow());
+
+    // Validate source directory exists
+    let watch_path = cli.get_project_path().join(&cli.src_dir);
+    if !watch_path.exists() {
+        return Err(BundlerError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Source directory '{}' does not exist", cli.src_dir),
+            ),
+            path: Some(watch_path),
+        });
+    }
+
+    // Setup signal handling for graceful shutdown
+    let (shutdown_tx, shutdown_rx) = mpsc::channel();
+    ctrlc::set_handler(move || {
+        let _ = shutdown_tx.send(());
+    })
+    .map_err(|e| BundlerError::Io {
+        source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+        path: None,
+    })?;
+
+    // Initial build
+    if let Err(e) = handle_bundle_command(cli) {
+        eprintln!("{} Initial build failed: {}", "❌".red(), e);
+    } else {
+        println!("{} Initial build successful!\n", "✅".green());
+    }
+
+    // Set up file watcher
+    let (tx, rx) = mpsc::channel();
+    let mut watcher = notify::recommended_watcher(tx).map_err(|e| BundlerError::Io {
+        source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+        path: None,
+    })?;
+
+    watcher
+        .watch(&watch_path, RecursiveMode::Recursive)
+        .map_err(|e| BundlerError::Io {
+            source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+            path: Some(watch_path),
+        })?;
+
+    let mut last_event_time = Instant::now();
+    let debounce_duration = Duration::from_millis(cli.debounce);
+
+    loop {
+        // Check for shutdown signal
+        if let Ok(()) = shutdown_rx.try_recv() {
+            println!("\n{} Received shutdown signal", "🛑".yellow());
+            break;
+        }
+
+        // Check for file system events
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(Ok(event)) => {
+                if should_rebuild(&event) {
+                    let now = Instant::now();
+                    if now.duration_since(last_event_time) > debounce_duration {
+                        last_event_time = now;
+
+                        if let Some(path) = event.paths.first() {
+                            if let Some(file_name) = path.file_name() {
+                                println!("{} File change detected: {:?}", "🔄".yellow(), file_name);
+                            } else {
+                                println!("{} File change detected", "🔄".yellow());
+                            }
+                        } else {
+                            println!("{} File change detected", "🔄".yellow());
+                        }
+
+                        match handle_bundle_command(cli) {
+                            Ok(_) => println!("{} Rebuild successful!\n", "✅".green()),
+                            Err(e) => eprintln!("{} Rebuild failed: {}\n", "❌".red(), e),
+                        }
+                    }
+                }
+            }
+            Ok(Err(e)) => eprintln!("{} Watch error: {}", "⚠️".yellow(), e),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Continue loop
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
+    println!("{} Watch mode stopped.", "🛑".red());
+    Ok(())
+}
+
+fn should_rebuild(event: &notify::Event) -> bool {
+    use notify::EventKind;
+
+    match &event.kind {
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {
+            // Only rebuild for Rust files
+            event.paths.iter().any(|path| {
+                path.extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext == "rs")
+                    .unwrap_or(false)
+            })
+        }
+        _ => false,
+    }
 }
