@@ -1151,7 +1151,7 @@ mod help_and_error_display_tests {
                 "--",
                 &project_path.to_string_lossy(),
             ])
-            .current_dir("/media/hsoysal/Bilgo/rust-singler")
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .expect("Failed to execute command");
 
@@ -1178,7 +1178,7 @@ mod help_and_error_display_tests {
                 "--",
                 &invalid_path.to_string_lossy(),
             ])
-            .current_dir("/media/hsoysal/Bilgo/rust-singler")
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .expect("Failed to execute command");
 
@@ -1208,7 +1208,7 @@ mod help_and_error_display_tests {
         // Test that the help message has the expected structure
         let output = Command::new("cargo")
             .args(&["run", "--bin", "cg-bundler", "--", "--help"])
-            .current_dir("/media/hsoysal/Bilgo/rust-singler")
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .expect("Failed to execute command");
 
@@ -1256,7 +1256,7 @@ mod help_and_error_display_tests {
                 "--",
                 &invalid_path.to_string_lossy(),
             ])
-            .current_dir("/media/hsoysal/Bilgo/rust-singler")
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .expect("Failed to execute command");
 
@@ -1273,7 +1273,7 @@ mod help_and_error_display_tests {
         // Test info command visual separators
         let info_output = Command::new("cargo")
             .args(&["run", "--bin", "cg-bundler", "--", "--info"])
-            .current_dir("/media/hsoysal/Bilgo/rust-singler")
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .expect("Failed to execute command");
 
@@ -1293,7 +1293,7 @@ mod help_and_error_display_tests {
         // Test that emoji indicators are used for accessibility
         let help_output = Command::new("cargo")
             .args(&["run", "--bin", "cg-bundler", "--", "--help"])
-            .current_dir("/media/hsoysal/Bilgo/rust-singler")
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .expect("Failed to execute command");
 
@@ -1318,7 +1318,7 @@ mod help_and_error_display_tests {
                 "--",
                 &invalid_path.to_string_lossy(),
             ])
-            .current_dir("/media/hsoysal/Bilgo/rust-singler")
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .expect("Failed to execute command");
 
