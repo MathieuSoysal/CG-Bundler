@@ -168,8 +168,22 @@ jobs:
       - name: Strip binary (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          if command -v strip >/dev/null 2>&1; then
-            strip target/${{ matrix.target }}/release/cg-bundler
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
+            # Use cross-compilation strip for ARM64
+            if command -v aarch64-linux-gnu-strip >/dev/null 2>&1; then
+              aarch64-linux-gnu-strip target/${{ matrix.target }}/release/cg-bundler
+              echo "✅ Stripped ARM64 binary"
+            else
+              echo "⚠️  aarch64-linux-gnu-strip not found, skipping strip"
+            fi
+          else
+            # Use regular strip for native targets
+            if command -v strip >/dev/null 2>&1; then
+              strip target/${{ matrix.target }}/release/cg-bundler
+              echo "✅ Stripped binary"
+            else
+              echo "⚠️  strip not found, skipping"
+            fi
           fi
 
       - name: Prepare binary for upload (Unix)
