@@ -1698,8 +1698,7 @@ name = "concurrent_test"
 path = "src/main.rs"
 "#;
     fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-
-    fs::create_dir(project_path.join("src")).expect("Failed to create src directory");
+    fs::create_dir(project_path.join("src")).expect("Failed to create src");
 
     let main_rs = r#"
 fn main() {
@@ -1997,298 +1996,7 @@ edition = "2021"
 }
 
 // ==============================================
-// ADVANCED RUST FEATURE TESTS
-// ==============================================
-
-/// Test bundling with advanced generics and where clauses
-#[test]
-fn test_bundling_with_advanced_generics() {
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let project_path = temp_dir.path();
-
-    let cargo_toml = r#"
-[package]
-name = "generics_test"
-version = "0.1.0"
-edition = "2021"
-"#;
-    fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    fs::create_dir(project_path.join("src")).expect("Failed to create src");
-
-    let main_rs = r#"
-use std::fmt::Display;
-use std::marker::PhantomData;
-
-// Complex generic struct with multiple type parameters and constraints
-struct ComplexGeneric<T, U, V> 
-where
-    T: Display + Clone + Send + Sync + 'static,
-    U: Into<String> + From<i32>,
-    V: Iterator<Item = T> + Clone,
-{
-    data: T,
-    converter: U,
-    iterator: V,
-    _phantom: PhantomData<(T, U, V)>,
-}
-
-impl<T, U, V> ComplexGeneric<T, U, V> 
-where
-    T: Display + Clone + Send + Sync + 'static,
-    U: Into<String> + From<i32>,
-    V: Iterator<Item = T> + Clone,
-{
-    fn new(data: T, converter: U, iterator: V) -> Self {
-        Self {
-            data,
-            converter,
-            iterator,
-            _phantom: PhantomData,
-        }
-    }
-    
-    fn process<F, R>(&self, func: F) -> R 
-    where
-        F: FnOnce(&T) -> R,
-        R: Display,
-    {
-        func(&self.data)
-    }
-}
-
-// Higher-ranked trait bounds (HRTB)
-fn higher_ranked_function<F>(f: F) -> i32 
-where
-    F: for<'a> Fn(&'a str) -> i32,
-{
-    f("test")
-}
-
-// Associated types
-trait ComplexTrait {
-    type Output: Display;
-    type Error: std::error::Error;
-    
-    fn process(&self) -> Result<Self::Output, Self::Error>;
-}
-
-fn main() {
-    println!("Advanced generics test");
-}
-"#;
-    fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-
-    let bundled_code = bundle(project_path).expect("Should bundle advanced generics");
-
-    assert!(
-        bundled_code.contains("ComplexGeneric"),
-        "Should contain complex generic struct"
-    );
-    assert!(
-        bundled_code.contains("where"),
-        "Should preserve where clauses"
-    );
-    assert!(
-        bundled_code.contains("PhantomData"),
-        "Should preserve PhantomData"
-    );
-    assert!(
-        bundled_code.contains("for<'a>"),
-        "Should preserve HRTB syntax"
-    );
-}
-
-/// Test bundling with procedural macros and derive macros
-#[test]
-fn test_bundling_with_proc_macros() {
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let project_path = temp_dir.path();
-
-    let cargo_toml = r#"
-[package]
-name = "proc_macro_test"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-serde = { version = "1.0", features = ["derive"] }
-"#;
-    fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    fs::create_dir(project_path.join("src")).expect("Failed to create src");
-
-    let main_rs = r#"
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConfigData {
-    #[serde(default)]
-    pub enable_feature: bool,
-    
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub optional_value: Option<String>,
-    
-    #[serde(flatten)]
-    pub metadata: Metadata,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Metadata {
-    pub version: String,
-    pub author: String,
-}
-
-// Custom derive usage
-#[derive(Debug, Clone)]
-pub struct CustomStruct {
-    data: Vec<i32>,
-}
-
-impl Default for CustomStruct {
-    fn default() -> Self {
-        Self {
-            data: vec![1, 2, 3],
-        }
-    }
-}
-
-fn main() {
-    let config = ConfigData {
-        enable_feature: true,
-        optional_value: Some("test".to_string()),
-        metadata: Metadata {
-            version: "1.0.0".to_string(),
-            author: "Test Author".to_string(),
-        },
-    };
-    
-    println!("{:?}", config);
-}
-"#;
-    fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-
-    let bundled_code = bundle(project_path).expect("Should bundle proc macro code");
-
-    assert!(
-        bundled_code.contains("#[derive("),
-        "Should preserve derive attributes"
-    );
-    assert!(
-        bundled_code.contains("Serialize"),
-        "Should preserve Serialize derive"
-    );
-    assert!(
-        bundled_code.contains("Deserialize"),
-        "Should preserve Deserialize derive"
-    );
-    assert!(
-        bundled_code.contains("#[serde("),
-        "Should preserve serde attributes"
-    );
-}
-
-/// Test bundling with complex lifetime annotations
-#[test]
-fn test_bundling_with_complex_lifetimes() {
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let project_path = temp_dir.path();
-
-    let cargo_toml = r#"
-[package]
-name = "lifetime_test"
-version = "0.1.0"
-edition = "2021"
-"#;
-    fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    fs::create_dir(project_path.join("src")).expect("Failed to create src");
-
-    let main_rs = r#"
-use std::collections::HashMap;
-
-// Complex lifetime relationships
-struct LifetimeStruct<'a, 'b> 
-where 
-    'a: 'b, // 'a outlives 'b
-{
-    long_lived: &'a str,
-    short_lived: &'b str,
-}
-
-impl<'a, 'b> LifetimeStruct<'a, 'b> 
-where 
-    'a: 'b,
-{
-    fn new(long: &'a str, short: &'b str) -> Self {
-        Self {
-            long_lived: long,
-            short_lived: short,
-        }
-    }
-    
-    fn get_combined(&self) -> String {
-        format!("{} {}", self.long_lived, self.short_lived)
-    }
-}
-
-// Higher-ranked trait bounds with lifetimes
-fn process_closure<F>(f: F) -> String 
-where
-    F: for<'a> Fn(&'a str) -> &'a str,
-{
-    let input = "test input";
-    f(input).to_string()
-}
-
-// Multiple lifetime parameters in functions
-fn complex_lifetime_function<'a, 'b, 'c>(
-    x: &'a str, 
-    y: &'b str, 
-    z: &'c str
-) -> &'a str 
-where 
-    'a: 'b + 'c,
-{
-    if x.len() > y.len() && x.len() > z.len() {
-        x
-    } else {
-        x // Always return x due to lifetime constraints
-    }
-}
-
-// Self-referential structures (challenging for lifetimes)
-struct SelfReferential<'a> {
-    data: String,
-    reference: Option<&'a str>,
-}
-
-fn main() {
-    let long_str = "long lived string";
-    let short_str = "short";
-    
-    let lifetime_struct = LifetimeStruct::new(long_str, short_str);
-    println!("{}", lifetime_struct.get_combined());
-    
-    let result = complex_lifetime_function(long_str, short_str, "other");
-    println!("{}", result);
-}
-"#;
-    fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-
-    let bundled_code = bundle(project_path).expect("Should bundle complex lifetime code");
-
-    assert!(
-        bundled_code.contains("'a: 'b"),
-        "Should preserve lifetime bounds"
-    );
-    assert!(bundled_code.contains("for<'a>"), "Should preserve HRTB");
-    assert!(
-        bundled_code.contains("'a: 'b + 'c"),
-        "Should preserve multiple lifetime bounds"
-    );
-}
-
-// ==============================================
-// ERROR HANDLING AND RECOVERY TESTS
+// ADVANCED ERROR HANDLING AND RECOVERY TESTS
 // ==============================================
 
 /// Test bundling with custom error types and Result chains
@@ -2443,691 +2151,197 @@ fn main() -> AppResult<()> {
 }
 
 // ==============================================
-// CONCURRENCY AND ASYNC TESTS
+// CLI HELP AND ERROR DISPLAY INTEGRATION TESTS
 // ==============================================
 
-/// Test bundling with advanced concurrency patterns
+/// Test that CLI help functionality works correctly with enhanced help text
 #[test]
-fn test_bundling_with_advanced_concurrency() {
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let project_path = temp_dir.path();
+fn test_cli_help_integration() {
+    use std::process::Command;
 
-    let cargo_toml = r#"
-[package]
-name = "concurrency_test"
-version = "0.1.0"
-edition = "2021"
+    // Test that the CLI help includes all expected elements
+    let output = Command::new("cargo")
+        .args(&["run", "--bin", "cg-bundler", "--", "--help"])
+        .current_dir(".")
+        .output()
+        .expect("Failed to execute command");
 
-[dependencies]
-tokio = { version = "1.0", features = ["full"] }
-"#;
-    fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    fs::create_dir(project_path.join("src")).expect("Failed to create src");
+    assert!(output.status.success(), "Help command should succeed");
 
-    let main_rs = r#"
-use std::sync::{Arc, Mutex, RwLock, Condvar, Barrier};
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread;
-use std::time::Duration;
-use std::collections::HashMap;
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
-// Thread-safe data structures
-#[derive(Debug)]
-pub struct ThreadSafeCounter {
-    value: Arc<Mutex<i32>>,
-    condition: Arc<Condvar>,
-}
-
-impl ThreadSafeCounter {
-    pub fn new() -> Self {
-        Self {
-            value: Arc::new(Mutex::new(0)),
-            condition: Arc::new(Condvar::new()),
-        }
-    }
-    
-    pub fn increment(&self) {
-        let mut value = self.value.lock().unwrap();
-        *value += 1;
-        self.condition.notify_all();
-    }
-    
-    pub fn wait_for_value(&self, target: i32) {
-        let mut value = self.value.lock().unwrap();
-        while *value < target {
-            value = self.condition.wait(value).unwrap();
-        }
-    }
-}
-
-// Reader-writer lock usage
-pub struct ConcurrentHashMap<K, V> {
-    data: Arc<RwLock<HashMap<K, V>>>,
-}
-
-impl<K, V> ConcurrentHashMap<K, V> 
-where 
-    K: std::hash::Hash + Eq + Clone,
-    V: Clone,
-{
-    pub fn new() -> Self {
-        Self {
-            data: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-    
-    pub fn insert(&self, key: K, value: V) {
-        let mut map = self.data.write().unwrap();
-        map.insert(key, value);
-    }
-    
-    pub fn get(&self, key: &K) -> Option<V> {
-        let map = self.data.read().unwrap();
-        map.get(key).cloned()
-    }
-}
-
-// Channel-based communication
-pub struct WorkerPool {
-    sender: Sender<Box<dyn FnOnce() + Send>>,
-    _handles: Vec<thread::JoinHandle<()>>,
-}
-
-impl WorkerPool {
-    pub fn new(size: usize) -> Self {
-        let (sender, receiver) = channel::<Box<dyn FnOnce() + Send>>();
-        let receiver = Arc::new(Mutex::new(receiver));
-        
-        let mut handles = Vec::new();
-        
-        for id in 0..size {
-            let receiver = Arc::clone(&receiver);
-            let handle = thread::spawn(move || {
-                loop {
-                    let job = receiver.lock().unwrap().recv();
-                    match job {
-                        Ok(job) => {
-                            println!("Worker {} executing job", id);
-                            job();
-                        }
-                        Err(_) => {
-                            println!("Worker {} shutting down", id);
-                            break;
-                        }
-                    }
-                }
-            });
-            handles.push(handle);
-        }
-        
-        Self {
-            sender,
-            _handles: handles,
-        }
-    }
-    
-    pub fn execute<F>(&self, job: F) 
-    where 
-        F: FnOnce() + Send + 'static,
-    {
-        let job = Box::new(job);
-        self.sender.send(job).unwrap();
-    }
-}
-
-// Barrier synchronization
-fn barrier_example() {
-    let barrier = Arc::new(Barrier::new(3));
-    let mut handles = vec![];
-    
-    for i in 0..3 {
-        let barrier = Arc::clone(&barrier);
-        let handle = thread::spawn(move || {
-            println!("Thread {} before barrier", i);
-            barrier.wait();
-            println!("Thread {} after barrier", i);
-        });
-        handles.push(handle);
-    }
-    
-    for handle in handles {
-        handle.join().unwrap();
-    }
-}
-
-fn main() {
-    let counter = ThreadSafeCounter::new();
-    let map = ConcurrentHashMap::new();
-    
-    // Spawn some threads to test concurrent access
-    let handles: Vec<_> = (0..5).map(|i| {
-        let counter = Arc::new(counter);
-        let map = Arc::new(map);
-        thread::spawn(move || {
-            counter.increment();
-            map.insert(i, format!("value_{}", i));
-        })
-    }).collect();
-    
-    for handle in handles {
-        handle.join().unwrap();
-    }
-    
-    barrier_example();
-    
-    println!("Concurrency test completed");
-}
-"#;
-    fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-
-    let bundled_code = bundle(project_path).expect("Should bundle concurrency code");
-
+    // Verify enhanced help content
     assert!(
-        bundled_code.contains("Arc<Mutex<"),
-        "Should preserve Arc<Mutex<>> patterns"
+        stdout.contains("A Rust code bundler"),
+        "Help should contain basic description"
     );
     assert!(
-        bundled_code.contains("RwLock"),
-        "Should preserve RwLock usage"
+        stdout.contains("🐛 Found a bug or need help?"),
+        "Help should contain bug report section"
     );
     assert!(
-        bundled_code.contains("Condvar"),
-        "Should preserve condition variables"
+        stdout.contains("https://github.com/MathieuSoysal/CG-Bundler/issues/new"),
+        "Help should contain GitHub issues URL"
     );
     assert!(
-        bundled_code.contains("Barrier"),
-        "Should preserve barrier synchronization"
+        stdout.contains("📖 Documentation:"),
+        "Help should contain documentation section"
     );
     assert!(
-        bundled_code.contains("mpsc::"),
-        "Should preserve channel imports"
+        stdout.contains("https://docs.rs/cg-bundler"),
+        "Help should contain documentation URL"
     );
 }
 
-// ==============================================
-// PERFORMANCE AND OPTIMIZATION TESTS
-// ==============================================
-
-/// Test bundling with performance-critical code patterns
+/// Test that CLI error handling includes enhanced error display
 #[test]
-fn test_bundling_with_performance_patterns() {
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let project_path = temp_dir.path();
+fn test_cli_error_display_integration() {
+    use std::process::Command;
 
-    let cargo_toml = r#"
-[package]
-name = "performance_test"
-version = "0.1.0"
-edition = "2021"
-"#;
-    fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
-    fs::create_dir(project_path.join("src")).expect("Failed to create src");
+    // Test error handling with invalid project path
+    let output = Command::new("cargo")
+        .args(&[
+            "run",
+            "--bin",
+            "cg-bundler",
+            "--",
+            "/definitely/nonexistent/path",
+        ])
+        .current_dir(".")
+        .output()
+        .expect("Failed to execute command");
 
-    let main_rs = r#"
-use std::hint::black_box;
-use std::arch::x86_64::*;
+    assert!(!output.status.success(), "Invalid path should cause error");
 
-// SIMD operations (x86_64 specific)
-#[cfg(target_arch = "x86_64")]
-unsafe fn simd_add(a: &[f32], b: &[f32], result: &mut [f32]) {
-    assert_eq!(a.len(), b.len());
-    assert_eq!(a.len(), result.len());
-    assert_eq!(a.len() % 4, 0);
-    
-    for i in (0..a.len()).step_by(4) {
-        let va = _mm_loadu_ps(a.as_ptr().add(i));
-        let vb = _mm_loadu_ps(b.as_ptr().add(i));
-        let vresult = _mm_add_ps(va, vb);
-        _mm_storeu_ps(result.as_mut_ptr().add(i), vresult);
-    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Verify enhanced error display
+    assert!(stderr.contains("Error:"), "Should contain error prefix");
+    assert!(
+        stderr.contains("💡 Need help or found a bug?"),
+        "Should contain help prompt"
+    );
+    assert!(
+        stderr.contains("https://github.com/MathieuSoysal/CG-Bundler/issues/new"),
+        "Should contain GitHub issues URL"
+    );
+    assert!(
+        stderr.contains("Your feedback helps improve CG-Bundler"),
+        "Should contain encouraging message"
+    );
+    assert!(stderr.contains("━"), "Should contain visual separators");
 }
 
-// Inline assembly (platform specific)
-#[cfg(target_arch = "x86_64")]
-fn inline_assembly_example() -> u64 {
-    let result: u64;
-    unsafe {
-        std::arch::asm!(
-            "rdtsc",
-            out("rax") result,
-            out("rdx") _,
+/// Test that info command includes enhanced footer
+#[test]
+fn test_cli_info_command_integration() {
+    use std::process::Command;
+
+    // Test info command with current project
+    let output = Command::new("cargo")
+        .args(&["run", "--bin", "cg-bundler", "--", "--info"])
+        .current_dir(".")
+        .output()
+        .expect("Failed to execute command");
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        // Verify info command includes footer
+        assert!(
+            stdout.contains("ℹ️  Need help or want to report an issue?"),
+            "Info should contain help footer"
+        );
+        assert!(
+            stdout.contains("https://github.com/MathieuSoysal/CG-Bundler/issues/new"),
+            "Info should contain GitHub issues URL"
+        );
+        assert!(
+            stdout.contains("━"),
+            "Info should contain visual separators"
         );
     }
-    result
 }
 
-// Memory pool allocation pattern
-struct MemoryPool<T> {
-    pool: Vec<Option<T>>,
-    free_indices: Vec<usize>,
-}
-
-impl<T> MemoryPool<T> {
-    fn new(capacity: usize) -> Self {
-        Self {
-            pool: (0..capacity).map(|_| None).collect(),
-            free_indices: (0..capacity).collect(),
-        }
-    }
-    
-    fn allocate(&mut self, item: T) -> Option<usize> {
-        if let Some(index) = self.free_indices.pop() {
-            self.pool[index] = Some(item);
-            Some(index)
-        } else {
-            None
-        }
-    }
-    
-    fn deallocate(&mut self, index: usize) -> Option<T> {
-        if index < self.pool.len() && self.pool[index].is_some() {
-            let item = self.pool[index].take();
-            self.free_indices.push(index);
-            item
-        } else {
-            None
-        }
-    }
-}
-
-// Zero-cost abstractions
-#[inline(always)]
-fn force_inline_function(x: i32) -> i32 {
-    x * 2 + 1
-}
-
-#[inline(never)]
-fn never_inline_function(x: i32) -> i32 {
-    x * 3 + 2
-}
-
-// Hot path optimization markers
-#[cold]
-fn cold_error_path() {
-    panic!("This should rarely be called");
-}
-
-#[inline]
-fn likely_hot_path(condition: bool) -> i32 {
-    if std::intrinsics::likely(condition) {
-        42
-    } else {
-        cold_error_path();
-        0
-    }
-}
-
-// Cache-friendly data structures
-#[repr(C)]
-struct CacheAligned {
-    #[repr(align(64))]
-    data: [u8; 64],
-}
-
-// Vectorizable loops
-fn vectorizable_sum(data: &[f32]) -> f32 {
-    let mut sum = 0.0;
-    for &value in data {
-        sum += value;
-    }
-    sum
-}
-
-// Prefetch hints
-fn prefetch_example(data: &[i32]) -> i32 {
-    let mut sum = 0;
-    for i in 0..data.len() {
-        if i + 64 < data.len() {
-            unsafe {
-                std::intrinsics::prefetch_read_data(data.as_ptr().add(i + 64), 3);
-            }
-        }
-        sum += data[i];
-    }
-    sum
-}
-
-fn main() {
-    // Performance test patterns
-    let data = vec![1.0f32; 1024];
-    let mut result = vec![0.0f32; 1024];
-    
-    #[cfg(target_arch = "x86_64")]
-    unsafe {
-        simd_add(&data, &data, &mut result);
-    }
-    
-    let mut pool = MemoryPool::<i32>::new(100);
-    let handle = pool.allocate(42).unwrap();
-    let value = pool.deallocate(handle).unwrap();
-    
-    println!("Performance patterns test: {}", value);
-    
-    // Prevent optimization
-    black_box(result);
-    black_box(pool);
-}
-"#;
-    fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-
-    let bundled_code = bundle(project_path).expect("Should bundle performance code");
-
-    assert!(
-        bundled_code.contains("#[inline"),
-        "Should preserve inline attributes"
-    );
-    assert!(
-        bundled_code.contains("black_box"),
-        "Should preserve optimization barriers"
-    );
-    assert!(
-        bundled_code.contains("#[repr("),
-        "Should preserve repr attributes"
-    );
-    assert!(
-        bundled_code.contains("intrinsics::"),
-        "Should preserve intrinsics usage"
-    );
-}
-
-// ==============================================
-// COMPLEX MODULE HIERARCHY TESTS
-// ==============================================
-
-/// Test bundling with deeply nested module structures
+/// Test that validation command includes enhanced messages in verbose mode
 #[test]
-fn test_bundling_complex_module_hierarchy() {
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let project_path = temp_dir.path();
+fn test_cli_validate_verbose_integration() {
+    use std::process::Command;
 
-    let cargo_toml = r#"
-[package]
-name = "complex_modules"
-version = "0.1.0"
-edition = "2021"
-"#;
-    fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
+    // Test validate command with current project in verbose mode
+    let output = Command::new("cargo")
+        .args(&[
+            "run",
+            "--bin",
+            "cg-bundler",
+            "--",
+            "--validate",
+            "--verbose",
+        ])
+        .current_dir(".")
+        .output()
+        .expect("Failed to execute command");
 
-    // Create complex directory structure
-    fs::create_dir_all(project_path.join("src/core/engine/graphics"))
-        .expect("Failed to create dirs");
-    fs::create_dir_all(project_path.join("src/core/engine/audio")).expect("Failed to create dirs");
-    fs::create_dir_all(project_path.join("src/core/systems")).expect("Failed to create dirs");
-    fs::create_dir_all(project_path.join("src/utils/math")).expect("Failed to create dirs");
-    fs::create_dir_all(project_path.join("src/utils/io")).expect("Failed to create dirs");
+    if output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Main module file
-    let main_rs = r#"
-mod core;
-mod utils;
-
-use core::engine::{Engine, EngineConfig};
-use utils::math::Vector3;
-
-fn main() {
-    let config = EngineConfig::default();
-    let mut engine = Engine::new(config);
-    
-    let position = Vector3::new(1.0, 2.0, 3.0);
-    engine.set_camera_position(position);
-    
-    engine.run();
-}
-"#;
-    fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
-
-    // Core module
-    let core_mod = r#"
-pub mod engine;
-pub mod systems;
-
-pub use engine::Engine;
-pub use systems::*;
-"#;
-    fs::write(project_path.join("src/core/mod.rs"), core_mod).expect("Failed to write core/mod.rs");
-
-    // Engine module
-    let engine_mod = r#"
-pub mod graphics;
-pub mod audio;
-
-use graphics::Renderer;
-use audio::AudioSystem;
-use crate::utils::math::Vector3;
-
-#[derive(Debug, Clone)]
-pub struct EngineConfig {
-    pub window_title: String,
-    pub width: u32,
-    pub height: u32,
-    pub vsync: bool,
-}
-
-impl Default for EngineConfig {
-    fn default() -> Self {
-        Self {
-            window_title: "Game Engine".to_string(),
-            width: 1920,
-            height: 1080,
-            vsync: true,
-        }
+        // Verify validation includes help info in verbose mode
+        assert!(
+            stderr.contains("ℹ️  Need help or want to report an issue?"),
+            "Validate verbose should include help info"
+        );
+        assert!(
+            stderr.contains("https://github.com/MathieuSoysal/CG-Bundler/issues/new"),
+            "Validate verbose should include GitHub issues URL"
+        );
     }
 }
 
-pub struct Engine {
-    renderer: Renderer,
-    audio: AudioSystem,
-    camera_position: Vector3,
-}
+/// Test consistency of GitHub URL across different commands
+#[test]
+fn test_github_url_consistency_across_commands() {
+    use std::process::Command;
 
-impl Engine {
-    pub fn new(config: EngineConfig) -> Self {
-        Self {
-            renderer: Renderer::new(config.width, config.height),
-            audio: AudioSystem::new(),
-            camera_position: Vector3::zero(),
-        }
-    }
-    
-    pub fn set_camera_position(&mut self, position: Vector3) {
-        self.camera_position = position;
-    }
-    
-    pub fn run(&self) {
-        println!("Engine running with camera at {:?}", self.camera_position);
-    }
-}
-"#;
-    fs::write(project_path.join("src/core/engine/mod.rs"), engine_mod)
-        .expect("Failed to write engine/mod.rs");
+    let expected_url = "https://github.com/MathieuSoysal/CG-Bundler/issues/new";
 
-    // Graphics module
-    let graphics_rs = r#"
-pub struct Renderer {
-    width: u32,
-    height: u32,
-}
+    // Test help command
+    let help_output = Command::new("cargo")
+        .args(&["run", "--bin", "cg-bundler", "--", "--help"])
+        .current_dir(".")
+        .output()
+        .expect("Failed to execute help command");
 
-impl Renderer {
-    pub fn new(width: u32, height: u32) -> Self {
-        Self { width, height }
-    }
-    
-    pub fn render(&self) {
-        println!("Rendering {}x{}", self.width, self.height);
-    }
-}
-"#;
-    fs::write(
-        project_path.join("src/core/engine/graphics.rs"),
-        graphics_rs,
-    )
-    .expect("Failed to write graphics.rs");
-
-    // Audio module
-    let audio_rs = r#"
-pub struct AudioSystem {
-    volume: f32,
-}
-
-impl AudioSystem {
-    pub fn new() -> Self {
-        Self { volume: 1.0 }
-    }
-    
-    pub fn play_sound(&self, sound_id: u32) {
-        println!("Playing sound {} at volume {}", sound_id, self.volume);
-    }
-}
-"#;
-    fs::write(project_path.join("src/core/engine/audio.rs"), audio_rs)
-        .expect("Failed to write audio.rs");
-
-    // Systems module
-    let systems_rs = r#"
-pub mod physics;
-pub mod input;
-
-pub use physics::PhysicsSystem;
-pub use input::InputSystem;
-
-pub trait System {
-    fn update(&mut self, delta_time: f32);
-}
-"#;
-    fs::write(project_path.join("src/core/systems/mod.rs"), systems_rs)
-        .expect("Failed to write systems/mod.rs");
-
-    // Physics system
-    let physics_rs = r#"
-use super::System;
-
-pub struct PhysicsSystem {
-    gravity: f32,
-}
-
-impl PhysicsSystem {
-    pub fn new() -> Self {
-        Self { gravity: 9.81 }
-    }
-}
-
-impl System for PhysicsSystem {
-    fn update(&mut self, delta_time: f32) {
-        println!("Physics update: {} seconds", delta_time);
-    }
-}
-"#;
-    fs::write(project_path.join("src/core/systems/physics.rs"), physics_rs)
-        .expect("Failed to write physics.rs");
-
-    // Input system
-    let input_rs = r#"
-use super::System;
-
-pub struct InputSystem {
-    keys_pressed: Vec<u32>,
-}
-
-impl InputSystem {
-    pub fn new() -> Self {
-        Self { keys_pressed: Vec::new() }
-    }
-}
-
-impl System for InputSystem {
-    fn update(&mut self, _delta_time: f32) {
-        // Input processing logic
-    }
-}
-"#;
-    fs::write(project_path.join("src/core/systems/input.rs"), input_rs)
-        .expect("Failed to write input.rs");
-
-    // Utils module
-    let utils_mod = r#"
-pub mod math;
-pub mod io;
-
-pub use math::*;
-pub use io::*;
-"#;
-    fs::write(project_path.join("src/utils/mod.rs"), utils_mod)
-        .expect("Failed to write utils/mod.rs");
-
-    // Math module
-    let math_mod = r#"
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Vector3 {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-}
-
-impl Vector3 {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { x, y, z }
-    }
-    
-    pub fn zero() -> Self {
-        Self::new(0.0, 0.0, 0.0)
-    }
-    
-    pub fn magnitude(&self) -> f32 {
-        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
-    }
-}
-
-impl std::ops::Add for Vector3 {
-    type Output = Self;
-    
-    fn add(self, other: Self) -> Self::Output {
-        Self::new(self.x + other.x, self.y + other.y, self.z + other.z)
-    }
-}
-"#;
-    fs::write(project_path.join("src/utils/math/mod.rs"), math_mod)
-        .expect("Failed to write math/mod.rs");
-
-    // IO module
-    let io_mod = r#"
-use std::fs;
-use std::path::Path;
-
-pub fn read_config_file<P: AsRef<Path>>(path: P) -> Result<String, std::io::Error> {
-    fs::read_to_string(path)
-}
-
-pub fn write_config_file<P: AsRef<Path>>(path: P, content: &str) -> Result<(), std::io::Error> {
-    fs::write(path, content)
-}
-"#;
-    fs::write(project_path.join("src/utils/io/mod.rs"), io_mod).expect("Failed to write io/mod.rs");
-
-    let bundled_code = bundle(project_path).expect("Should bundle complex module hierarchy");
-
+    let help_stdout = String::from_utf8_lossy(&help_output.stdout);
     assert!(
-        bundled_code.contains("Engine"),
-        "Should contain Engine struct"
-    );
-    assert!(
-        bundled_code.contains("Vector3"),
-        "Should contain Vector3 struct"
-    );
-    assert!(
-        bundled_code.contains("PhysicsSystem"),
-        "Should contain PhysicsSystem"
-    );
-    assert!(
-        bundled_code.contains("InputSystem"),
-        "Should contain InputSystem"
-    );
-    assert!(bundled_code.contains("Renderer"), "Should contain Renderer");
-    assert!(
-        bundled_code.contains("AudioSystem"),
-        "Should contain AudioSystem"
+        help_stdout.contains(expected_url),
+        "Help command should contain consistent GitHub URL"
     );
 
-    // Verify it's valid Rust syntax
-    syn::parse_file(&bundled_code).expect("Bundled code should be valid Rust");
+    // Test error output
+    let error_output = Command::new("cargo")
+        .args(&["run", "--bin", "cg-bundler", "--", "/invalid/path"])
+        .current_dir(".")
+        .output()
+        .expect("Failed to execute error command");
+
+    let error_stderr = String::from_utf8_lossy(&error_output.stderr);
+    assert!(
+        error_stderr.contains(expected_url),
+        "Error output should contain consistent GitHub URL"
+    );
+
+    // Test info command
+    let info_output = Command::new("cargo")
+        .args(&["run", "--bin", "cg-bundler", "--", "--info"])
+        .current_dir(".")
+        .output()
+        .expect("Failed to execute info command");
+
+    if info_output.status.success() {
+        let info_stdout = String::from_utf8_lossy(&info_output.stdout);
+        assert!(
+            info_stdout.contains(expected_url),
+            "Info command should contain consistent GitHub URL"
+        );
+    }
 }

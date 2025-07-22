@@ -402,4 +402,132 @@ fn main() {
             .stdout(predicate::str::contains("fn main"))
             .stdout(predicate::str::contains("helper")); // Should expand modules by default
     }
+
+    #[test]
+    fn test_cli_help_contains_github_issues_link() {
+        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+
+        cmd.arg("--help")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("🐛 Found a bug or need help?"))
+            .stdout(predicate::str::contains(
+                "https://github.com/MathieuSoysal/CG-Bundler/issues/new",
+            ))
+            .stdout(predicate::str::contains("📖 Documentation:"))
+            .stdout(predicate::str::contains("https://docs.rs/cg-bundler"));
+    }
+
+    #[test]
+    fn test_cli_error_contains_github_issues_link() {
+        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+
+        cmd.arg("/nonexistent/project/path")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("💡 Need help or found a bug?"))
+            .stderr(predicate::str::contains(
+                "https://github.com/MathieuSoysal/CG-Bundler/issues/new",
+            ))
+            .stderr(predicate::str::contains(
+                "Your feedback helps improve CG-Bundler",
+            ))
+            .stderr(predicate::str::contains("━"));
+    }
+
+    #[test]
+    fn test_cli_info_contains_github_issues_link() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path().join("test_project");
+
+        create_test_project(
+            &project_path,
+            "test_project",
+            "fn main() { println!(\"Hello, world!\"); }",
+        );
+
+        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+
+        cmd.current_dir(&project_path)
+            .arg("--info")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(
+                "ℹ️  Need help or want to report an issue?",
+            ))
+            .stdout(predicate::str::contains(
+                "https://github.com/MathieuSoysal/CG-Bundler/issues/new",
+            ))
+            .stdout(predicate::str::contains("━"));
+    }
+
+    #[test]
+    fn test_cli_validate_verbose_contains_github_issues_link() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path().join("test_project");
+
+        create_test_project(
+            &project_path,
+            "test_project",
+            "fn main() { println!(\"Hello, world!\"); }",
+        );
+
+        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+
+        cmd.current_dir(&project_path)
+            .arg("--validate")
+            .arg("--verbose")
+            .assert()
+            .success()
+            .stderr(predicate::str::contains(
+                "ℹ️  Need help or want to report an issue?",
+            ))
+            .stderr(predicate::str::contains(
+                "https://github.com/MathieuSoysal/CG-Bundler/issues/new",
+            ));
+    }
+
+    #[test]
+    fn test_cli_bundle_verbose_contains_github_issues_link() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path().join("test_project");
+        let output_file = temp_dir.path().join("output.rs");
+
+        create_test_project(
+            &project_path,
+            "test_project",
+            "fn main() { println!(\"Hello, world!\"); }",
+        );
+
+        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+
+        cmd.current_dir(&project_path)
+            .arg("--verbose")
+            .arg("--output")
+            .arg(&output_file)
+            .assert()
+            .success()
+            .stderr(predicate::str::contains("ℹ️  Issues or feedback? Visit:"))
+            .stderr(predicate::str::contains(
+                "https://github.com/MathieuSoysal/CG-Bundler/issues/new",
+            ));
+    }
+
+    #[test]
+    fn test_cli_short_help_does_not_contain_github_link() {
+        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+
+        // Test that short help (-h) doesn't show the detailed GitHub link
+        cmd.arg("-h")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(
+                "Bundle Rust projects into single files",
+            ))
+            .stdout(predicate::str::contains("see more with '--help'"))
+            .stdout(
+                predicate::str::contains("https://github.com/MathieuSoysal/CG-Bundler/issues/new")
+                    .not(),
+            );
+    }
 }
