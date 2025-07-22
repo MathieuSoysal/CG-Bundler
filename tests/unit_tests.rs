@@ -1,3 +1,4 @@
+use cg_bundler::cargo_project::CargoProject;
 use cg_bundler::error::BundlerError;
 use cg_bundler::file_manager::FileManager;
 use cg_bundler::transformer::{CodeTransformer, TransformConfig};
@@ -749,7 +750,7 @@ mod file_manager_robustness_tests {
 }
 
 /// Tests for bundler integration with different project configurations
-mod bundler_integration_tests {
+mod bundler_integration_basic_tests {
     use super::*;
 
     #[test]
@@ -1040,286 +1041,799 @@ mod filesystem_edge_cases {
     }
 }
 
-/// Test various configuration combinations comprehensively  
-mod comprehensive_config_tests {
+/// Tests for bundler integration with different project configurations
+mod bundler_integration_tests {
     use super::*;
 
     #[test]
-    fn test_all_config_combinations() {
+    fn test_bundler_with_minimal_project() {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let base_path = temp_dir.path();
+        let project_path = temp_dir.path();
 
-        // Generate all possible boolean combinations for the config
-        let bool_options = [true, false];
+        // Create minimal Cargo.toml
+        let cargo_toml = r#"
+[package]
+name = "minimal"
+version = "0.1.0"
+edition = "2021"
+"#;
+        fs::write(project_path.join("Cargo.toml"), cargo_toml).expect("Failed to write Cargo.toml");
 
-        for &remove_tests in &bool_options {
-            for &remove_docs in &bool_options {
-                for &expand_modules in &bool_options {
-                    for &minify in &bool_options {
-                        for &aggressive_minify in &bool_options {
-                            let config = TransformConfig {
-                                remove_tests,
-                                remove_docs,
-                                expand_modules,
-                                minify,
-                                aggressive_minify,
-                            };
+        fs::create_dir(project_path.join("src")).expect("Failed to create src");
 
-                            // Test that all combinations are valid
-                            let _transformer =
-                                CodeTransformer::new(base_path, "test_crate", config.clone());
+        // Create minimal main.rs
+        let main_rs = "fn main() {}";
+        fs::write(project_path.join("src/main.rs"), main_rs).expect("Failed to write main.rs");
 
-                            // Test bundler with this config
-                            let bundler = Bundler::with_config(config.clone());
-                            assert_eq!(bundler.config().remove_tests, remove_tests);
-                            assert_eq!(bundler.config().remove_docs, remove_docs);
-                            assert_eq!(bundler.config().expand_modules, expand_modules);
-                            assert_eq!(bundler.config().minify, minify);
-                            assert_eq!(bundler.config().aggressive_minify, aggressive_minify);
-                        }
-                    }
-                }
-            }
+        let bundler = Bundler::new();
+        let result = bundler.bundle(project_path);
+
+        assert!(result.is_ok(), "Should bundle minimal project");
+
+        if let Ok(code) = result {
+            assert!(code.contains("fn main"), "Should contain main function");
         }
     }
 
     #[test]
-    fn test_config_edge_combinations() {
-        // Test specific edge case combinations
-        let edge_configs = vec![
-            // All features enabled
-            TransformConfig {
-                remove_tests: true,
-                remove_docs: true,
-                expand_modules: true,
-                minify: true,
-                aggressive_minify: true,
-            },
-            // All features disabled
-            TransformConfig {
-                remove_tests: false,
-                remove_docs: false,
-                expand_modules: false,
-                minify: false,
-                aggressive_minify: false,
-            },
-            // Only aggressive minify enabled (edge case)
-            TransformConfig {
-                remove_tests: false,
-                remove_docs: false,
-                expand_modules: false,
-                minify: false,
-                aggressive_minify: true,
-            },
-            // Minify enabled but aggressive disabled
-            TransformConfig {
-                remove_tests: false,
-                remove_docs: false,
-                expand_modules: false,
-                minify: true,
-                aggressive_minify: false,
-            },
-        ];
+    fn test_bundler_state_consistency() {
+        let bundler = Bundler::new();
+        let config1 = bundler.config().clone();
 
-        for (i, config) in edge_configs.iter().enumerate() {
-            let bundler = Bundler::with_config(config.clone());
+        // Config should remain consistent across multiple accesses
+        let config2 = bundler.config().clone();
 
-            // Verify the configuration was set correctly
-            let stored_config = bundler.config();
-            assert_eq!(
-                stored_config.remove_tests, config.remove_tests,
-                "Config {} remove_tests mismatch",
-                i
-            );
-            assert_eq!(
-                stored_config.remove_docs, config.remove_docs,
-                "Config {} remove_docs mismatch",
-                i
-            );
-            assert_eq!(
-                stored_config.expand_modules, config.expand_modules,
-                "Config {} expand_modules mismatch",
-                i
-            );
-            assert_eq!(
-                stored_config.minify, config.minify,
-                "Config {} minify mismatch",
-                i
-            );
-            assert_eq!(
-                stored_config.aggressive_minify, config.aggressive_minify,
-                "Config {} aggressive_minify mismatch",
-                i
-            );
-        }
+        assert_eq!(config1.remove_tests, config2.remove_tests);
+        assert_eq!(config1.remove_docs, config2.remove_docs);
+        assert_eq!(config1.expand_modules, config2.expand_modules);
+        assert_eq!(config1.minify, config2.minify);
+        assert_eq!(config1.aggressive_minify, config2.aggressive_minify);
+    }
+
+    #[test]
+    fn test_bundler_error_recovery() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+
+        // Test with invalid project
+        let bundler = Bundler::new();
+        let result = bundler.bundle(temp_dir.path().join("nonexistent"));
+        assert!(result.is_err(), "Should fail with non-existent project");
+
+        // Bundler should still be usable after error
+        let project_path = temp_dir.path().join("valid_project");
+        fs::create_dir_all(project_path.join("src")).expect("Failed to create project");
+
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "valid"
+version = "0.1.0"
+edition = "2021"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        fs::write(project_path.join("src/main.rs"), "fn main() {}")
+            .expect("Failed to write main.rs");
+
+        let result = bundler.bundle(&project_path);
+        assert!(result.is_ok(), "Should work with valid project after error");
     }
 }
 
-/// Test bundler state management and thread safety
-mod bundler_state_tests {
+// ==============================================
+// COMPREHENSIVE BUNDLER TESTS (COVERAGE IMPROVEMENT)
+// ==============================================
+
+/// Tests specifically targeting missing coverage in bundler.rs
+mod bundler_core_coverage_tests {
     use super::*;
 
     #[test]
-    fn test_bundler_state_isolation() {
-        let config1 = TransformConfig {
-            remove_tests: true,
-            remove_docs: false,
-            expand_modules: true,
-            minify: false,
-            aggressive_minify: false,
-        };
+    fn test_bundler_set_config() {
+        let mut bundler = Bundler::new();
 
-        let config2 = TransformConfig {
+        let original_config = bundler.config().clone();
+        assert!(original_config.remove_tests);
+        assert!(original_config.remove_docs);
+
+        let new_config = TransformConfig {
             remove_tests: false,
-            remove_docs: true,
+            remove_docs: false,
             expand_modules: false,
             minify: true,
             aggressive_minify: true,
         };
 
-        let bundler1 = Bundler::with_config(config1.clone());
-        let bundler2 = Bundler::with_config(config2.clone());
+        bundler.set_config(new_config.clone());
 
-        // Verify that each bundler maintains its own config
-        assert_ne!(
+        let updated_config = bundler.config();
+        assert_eq!(updated_config.remove_tests, new_config.remove_tests);
+        assert_eq!(updated_config.remove_docs, new_config.remove_docs);
+        assert_eq!(updated_config.expand_modules, new_config.expand_modules);
+        assert_eq!(updated_config.minify, new_config.minify);
+        assert_eq!(
+            updated_config.aggressive_minify,
+            new_config.aggressive_minify
+        );
+    }
+
+    #[test]
+    fn test_bundler_default_impl() {
+        let bundler1 = Bundler::new();
+        let bundler2 = Bundler::default();
+
+        assert_eq!(
             bundler1.config().remove_tests,
             bundler2.config().remove_tests
         );
-        assert_ne!(bundler1.config().remove_docs, bundler2.config().remove_docs);
-        assert_ne!(
+        assert_eq!(bundler1.config().remove_docs, bundler2.config().remove_docs);
+        assert_eq!(
             bundler1.config().expand_modules,
             bundler2.config().expand_modules
         );
-        assert_ne!(bundler1.config().minify, bundler2.config().minify);
-        assert_ne!(
+        assert_eq!(bundler1.config().minify, bundler2.config().minify);
+        assert_eq!(
             bundler1.config().aggressive_minify,
             bundler2.config().aggressive_minify
         );
-
-        // Verify configs haven't been affected by creating other bundlers
-        assert_eq!(bundler1.config().remove_tests, config1.remove_tests);
-        assert_eq!(bundler2.config().remove_tests, config2.remove_tests);
     }
 
     #[test]
-    fn test_bundler_config_immutability() {
-        let original_config = TransformConfig {
-            remove_tests: true,
-            remove_docs: true,
-            expand_modules: false,
-            minify: false,
-            aggressive_minify: false,
-        };
+    fn test_bundler_with_invalid_cargo_project() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let invalid_project_path = temp_dir.path().join("invalid");
 
-        let bundler = Bundler::with_config(original_config.clone());
+        // Create directory without Cargo.toml
+        fs::create_dir_all(&invalid_project_path).expect("Failed to create directory");
 
-        // Get config multiple times and verify it doesn't change
-        let config1 = bundler.config().clone();
-        let config2 = bundler.config().clone();
-        let config3 = bundler.config().clone();
+        let bundler = Bundler::new();
+        let result = bundler.bundle(&invalid_project_path);
 
-        assert_eq!(config1.remove_tests, config2.remove_tests);
-        assert_eq!(config2.remove_tests, config3.remove_tests);
-        assert_eq!(config1.remove_docs, config2.remove_docs);
-        assert_eq!(config2.remove_docs, config3.remove_docs);
+        assert!(result.is_err(), "Should fail with invalid project");
 
-        // Verify config matches original
-        assert_eq!(config1.remove_tests, original_config.remove_tests);
-        assert_eq!(config1.remove_docs, original_config.remove_docs);
-        assert_eq!(config1.expand_modules, original_config.expand_modules);
+        // Test error message contains useful information
+        let error_str = format!("{}", result.unwrap_err());
+        assert!(!error_str.is_empty(), "Error message should not be empty");
+    }
+
+    #[test]
+    fn test_bundler_with_cargo_project_that_has_parse_errors() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path().join("invalid_syntax_project");
+
+        fs::create_dir_all(project_path.join("src")).expect("Failed to create src");
+
+        // Create valid Cargo.toml
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "invalid_syntax"
+version = "0.1.0"
+edition = "2021"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        // Create main.rs with invalid syntax
+        fs::write(
+            project_path.join("src/main.rs"),
+            "fn main() { this is invalid rust syntax !!!",
+        )
+        .expect("Failed to write invalid main.rs");
+
+        let bundler = Bundler::new();
+        let result = bundler.bundle(&project_path);
+
+        assert!(result.is_err(), "Should fail with parse error");
+
+        let error = result.unwrap_err();
+        match error {
+            BundlerError::Parsing { message, file_path } => {
+                assert!(message.contains("Failed to parse binary target source"));
+                assert!(file_path.is_some());
+                let path = file_path.unwrap();
+                assert!(path.to_string_lossy().contains("main.rs"));
+            }
+            _ => panic!("Expected parsing error, got: {:?}", error),
+        }
+    }
+
+    #[test]
+    fn test_bundler_with_cargo_project_read_error() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path().join("read_error_project");
+
+        fs::create_dir_all(project_path.join("src")).expect("Failed to create src");
+
+        // Create valid Cargo.toml
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "read_error"
+version = "0.1.0"
+edition = "2021"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        // Create main.rs but make it unreadable (by not creating it)
+        // This will trigger a read error when bundler tries to read the source
+
+        let bundler = Bundler::new();
+        let result = bundler.bundle(&project_path);
+
+        assert!(result.is_err(), "Should fail with read or metadata error");
+
+        // Accept either CargoMetadata error (no targets) or Parsing error (file not found)
+        let error = result.unwrap_err();
+        match error {
+            BundlerError::Parsing { message, file_path } => {
+                assert!(message.contains("Failed to read binary target source"));
+                assert!(file_path.is_some());
+            }
+            BundlerError::CargoMetadata { message, .. } => {
+                assert!(message.contains("Failed to obtain cargo metadata"));
+            }
+            _ => panic!("Expected parsing or cargo metadata error, got: {:?}", error),
+        }
+    }
+
+    #[test]
+    fn test_bundler_config_method_returns_reference() {
+        let bundler = Bundler::new();
+        let config_ref1 = bundler.config();
+        let config_ref2 = bundler.config();
+
+        // Both references should point to the same data
+        assert_eq!(config_ref1.remove_tests, config_ref2.remove_tests);
+        assert_eq!(config_ref1.remove_docs, config_ref2.remove_docs);
+
+        // Test that the reference is actually to the internal config
+        assert!(config_ref1.remove_tests); // Default should be true
+        assert!(config_ref1.remove_docs); // Default should be true
+    }
+
+    #[test]
+    fn test_bundler_bundle_vs_bundle_project_consistency() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path().join("consistency_test");
+
+        fs::create_dir_all(project_path.join("src")).expect("Failed to create src");
+
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "consistency_test"
+version = "0.1.0"
+edition = "2021"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        fs::write(
+            project_path.join("src/main.rs"),
+            "fn main() { println!(\"Hello, world!\"); }",
+        )
+        .expect("Failed to write main.rs");
+
+        let bundler = Bundler::new();
+
+        // Test direct bundle method
+        let result1 = bundler
+            .bundle(&project_path)
+            .expect("Direct bundle should work");
+
+        // Test bundle_project method
+        let cargo_project = CargoProject::new(&project_path).expect("Should create CargoProject");
+        let result2 = bundler
+            .bundle_project(&cargo_project)
+            .expect("bundle_project should work");
+
+        // Results should be identical
+        assert_eq!(
+            result1, result2,
+            "bundle() and bundle_project() should produce identical results"
+        );
+
+        // Result should contain the main function
+        assert!(
+            result1.contains("fn main"),
+            "Bundled code should contain main function"
+        );
+        assert!(
+            result1.contains("println!"),
+            "Bundled code should contain println!"
+        );
+    }
+
+    #[test]
+    fn test_bundler_with_multiple_configurations() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path().join("multi_config_test");
+
+        fs::create_dir_all(project_path.join("src")).expect("Failed to create src");
+
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "multi_config_test"
+version = "0.1.0"
+edition = "2021"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        fs::write(
+            project_path.join("src/main.rs"),
+            r#"
+/// This is documentation
+fn main() {
+    println!("Hello, world!");
+}
+
+#[test]
+fn test_function() {
+    assert!(true);
+}
+"#,
+        )
+        .expect("Failed to write main.rs");
+
+        // Test with different configurations
+        let configs = vec![
+            TransformConfig::default(),
+            TransformConfig {
+                remove_tests: false,
+                remove_docs: true,
+                expand_modules: false,
+                minify: false,
+                aggressive_minify: false,
+            },
+            TransformConfig {
+                remove_tests: true,
+                remove_docs: false,
+                expand_modules: true,
+                minify: true,
+                aggressive_minify: false,
+            },
+        ];
+
+        for (i, config) in configs.iter().enumerate() {
+            let bundler = Bundler::with_config(config.clone());
+            let result = bundler
+                .bundle(&project_path)
+                .expect(&format!("Config {} should work", i));
+
+            // All results should contain main function
+            assert!(
+                result.contains("fn main"),
+                "Config {} result should contain main",
+                i
+            );
+
+            // Check if tests are removed based on config
+            if config.remove_tests {
+                assert!(
+                    !result.contains("#[test]"),
+                    "Config {} should remove tests",
+                    i
+                );
+                assert!(
+                    !result.contains("test_function"),
+                    "Config {} should remove test functions",
+                    i
+                );
+            }
+
+            // Check if docs are removed based on config
+            if config.remove_docs {
+                assert!(
+                    !result.contains("/// This is documentation"),
+                    "Config {} should remove docs",
+                    i
+                );
+            }
+        }
     }
 }
 
-/// Test error message quality and formatting
-mod error_message_tests {
+// ==============================================
+// ERROR COVERAGE TESTS
+// ==============================================
+
+/// Tests specifically targeting missing coverage in error.rs
+mod error_coverage_tests {
+    use super::*;
+    use std::io;
+
+    #[test]
+    fn test_error_display_io_with_path() {
+        let io_err = io::Error::new(io::ErrorKind::NotFound, "File not found");
+        let path = std::path::PathBuf::from("/test/path.rs");
+
+        let error = BundlerError::Io {
+            source: io_err,
+            path: Some(path.clone()),
+        };
+
+        let display_str = format!("{}", error);
+        assert!(display_str.contains("IO error with file"));
+        assert!(display_str.contains("/test/path.rs"));
+        assert!(display_str.contains("File not found"));
+    }
+
+    #[test]
+    fn test_error_display_io_without_path() {
+        let io_err = io::Error::new(io::ErrorKind::PermissionDenied, "Permission denied");
+
+        let error = BundlerError::Io {
+            source: io_err,
+            path: None,
+        };
+
+        let display_str = format!("{}", error);
+        assert!(display_str.contains("IO error:"));
+        assert!(display_str.contains("Permission denied"));
+        assert!(!display_str.contains("with file"));
+    }
+
+    #[test]
+    fn test_error_display_parsing_with_path() {
+        let path = std::path::PathBuf::from("/src/main.rs");
+
+        let error = BundlerError::Parsing {
+            message: "Unexpected token".to_string(),
+            file_path: Some(path.clone()),
+        };
+
+        let display_str = format!("{}", error);
+        assert!(display_str.contains("Parsing error in"));
+        assert!(display_str.contains("/src/main.rs"));
+        assert!(display_str.contains("Unexpected token"));
+    }
+
+    #[test]
+    fn test_error_display_parsing_without_path() {
+        let error = BundlerError::Parsing {
+            message: "Invalid syntax".to_string(),
+            file_path: None,
+        };
+
+        let display_str = format!("{}", error);
+        assert!(display_str.contains("Parsing error:"));
+        assert!(display_str.contains("Invalid syntax"));
+        assert!(!display_str.contains(" in "));
+    }
+
+    #[test]
+    fn test_error_display_cargo_metadata() {
+        let error = BundlerError::CargoMetadata {
+            message: "Failed to parse Cargo.toml".to_string(),
+            source: None,
+        };
+
+        let display_str = format!("{}", error);
+        assert!(display_str.contains("Cargo metadata error:"));
+        assert!(display_str.contains("Failed to parse Cargo.toml"));
+    }
+
+    #[test]
+    fn test_error_display_project_structure() {
+        let error = BundlerError::ProjectStructure {
+            message: "Invalid project layout".to_string(),
+        };
+
+        let display_str = format!("{}", error);
+        assert!(display_str.contains("Project structure error:"));
+        assert!(display_str.contains("Invalid project layout"));
+    }
+
+    #[test]
+    fn test_error_display_multiple_binary_targets() {
+        let error = BundlerError::MultipleBinaryTargets { target_count: 3 };
+
+        let display_str = format!("{}", error);
+        assert!(display_str.contains("Multiple binary targets found"));
+        assert!(display_str.contains("(3)"));
+        assert!(display_str.contains("Only single binary target is supported"));
+    }
+
+    #[test]
+    fn test_error_display_no_binary_target() {
+        let error = BundlerError::NoBinaryTarget;
+
+        let display_str = format!("{}", error);
+        assert!(display_str.contains("No binary target found in the project"));
+    }
+
+    #[test]
+    fn test_error_display_multiple_library_targets() {
+        let error = BundlerError::MultipleLibraryTargets { target_count: 2 };
+
+        let display_str = format!("{}", error);
+        assert!(display_str.contains("Multiple library targets found"));
+        assert!(display_str.contains("(2)"));
+        assert!(display_str.contains("Only single library target is supported"));
+    }
+
+    #[test]
+    fn test_error_source_implementation() {
+        use std::error::Error;
+
+        // Test IO error source
+        let io_err = io::Error::new(io::ErrorKind::NotFound, "File not found");
+        let bundler_error = BundlerError::Io {
+            source: io_err,
+            path: None,
+        };
+
+        let source = bundler_error.source();
+        assert!(source.is_some(), "IO error should have source");
+
+        // Test errors without source
+        let no_source_errors = vec![
+            BundlerError::NoBinaryTarget,
+            BundlerError::MultipleBinaryTargets { target_count: 1 },
+            BundlerError::MultipleLibraryTargets { target_count: 1 },
+            BundlerError::ProjectStructure {
+                message: "test".to_string(),
+            },
+            BundlerError::Parsing {
+                message: "test".to_string(),
+                file_path: None,
+            },
+        ];
+
+        for error in no_source_errors {
+            let source = error.source();
+            assert!(source.is_none(), "Error {:?} should not have source", error);
+        }
+    }
+}
+
+// ==============================================
+// CARGO PROJECT COVERAGE TESTS
+// ==============================================
+
+/// Tests specifically targeting missing coverage in cargo_project.rs
+mod cargo_project_coverage_tests {
     use super::*;
 
     #[test]
-    fn test_error_message_completeness() {
-        // Test that error messages contain sufficient detail for debugging
-        let error_cases = vec![
-            BundlerError::ProjectStructure {
-                message: "Invalid project layout detected".to_string(),
-            },
-            BundlerError::CargoMetadata {
-                message: "Failed to parse Cargo.toml".to_string(),
-                source: None,
-            },
-            BundlerError::NoBinaryTarget,
-            BundlerError::MultipleBinaryTargets { target_count: 3 },
-            BundlerError::MultipleLibraryTargets { target_count: 2 },
-        ];
+    fn test_cargo_project_with_multiple_binary_targets() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path();
 
-        for (i, error) in error_cases.iter().enumerate() {
-            let error_string = format!("{}", error);
-            let debug_string = format!("{:?}", error);
+        fs::create_dir_all(project_path.join("src/bin")).expect("Failed to create bin directory");
 
-            // Error messages should not be empty
-            assert!(
-                !error_string.is_empty(),
-                "Error {} display should not be empty",
-                i
-            );
-            assert!(
-                !debug_string.is_empty(),
-                "Error {} debug should not be empty",
-                i
-            );
+        // Create Cargo.toml with multiple binary targets
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "multi_binary"
+version = "0.1.0"
+edition = "2021"
 
-            // Error messages should contain key information
-            match error {
-                BundlerError::ProjectStructure { message } => {
-                    assert!(
-                        error_string.contains(message),
-                        "Should contain custom message"
-                    );
-                }
-                BundlerError::MultipleBinaryTargets { target_count } => {
-                    assert!(
-                        error_string.contains(&target_count.to_string()),
-                        "Should contain target count"
-                    );
-                }
-                BundlerError::MultipleLibraryTargets { target_count } => {
-                    assert!(
-                        error_string.contains(&target_count.to_string()),
-                        "Should contain target count"
-                    );
-                }
-                _ => {} // Other error types have their own specific content
+[[bin]]
+name = "binary1"
+path = "src/bin/binary1.rs"
+
+[[bin]]
+name = "binary2"
+path = "src/bin/binary2.rs"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        fs::write(project_path.join("src/bin/binary1.rs"), "fn main() {}")
+            .expect("Failed to write binary1.rs");
+        fs::write(project_path.join("src/bin/binary2.rs"), "fn main() {}")
+            .expect("Failed to write binary2.rs");
+
+        let result = CargoProject::new(project_path);
+        assert!(result.is_err(), "Should fail with multiple binary targets");
+
+        match result.unwrap_err() {
+            BundlerError::MultipleBinaryTargets { target_count } => {
+                assert_eq!(
+                    target_count, 2,
+                    "Should report correct number of binary targets"
+                );
+            }
+            other => panic!("Expected MultipleBinaryTargets error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cargo_project_with_no_binary_target() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path();
+
+        fs::create_dir_all(project_path.join("src")).expect("Failed to create src");
+
+        // Create Cargo.toml with only library target
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "lib_only"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "lib_only"
+path = "src/lib.rs"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        fs::write(project_path.join("src/lib.rs"), "// Library code")
+            .expect("Failed to write lib.rs");
+
+        let result = CargoProject::new(project_path);
+        assert!(result.is_err(), "Should fail with no binary targets");
+
+        match result.unwrap_err() {
+            BundlerError::NoBinaryTarget => {
+                // Expected error
+            }
+            other => panic!("Expected NoBinaryTarget error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cargo_project_with_multiple_library_targets() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path();
+
+        fs::create_dir_all(project_path.join("src")).expect("Failed to create src");
+
+        // Create Cargo.toml with multiple library targets (if possible)
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "multi_lib"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "lib1"
+path = "src/lib1.rs"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        fs::write(project_path.join("src/lib1.rs"), "// Library 1")
+            .expect("Failed to write lib1.rs");
+        fs::write(project_path.join("src/main.rs"), "fn main() {}")
+            .expect("Failed to write main.rs");
+
+        // This might not trigger the multiple library targets error in all cases,
+        // but we test the path nonetheless
+        let result = CargoProject::new(project_path);
+
+        // It might succeed or fail depending on cargo metadata behavior
+        match result {
+            Ok(_) => {
+                // This is fine, some configurations are valid
+            }
+            Err(BundlerError::MultipleLibraryTargets { target_count }) => {
+                assert!(target_count > 1, "Should report multiple library targets");
+            }
+            Err(other) => {
+                // Other errors are also acceptable for this test
+                eprintln!("Got other error (acceptable): {:?}", other);
             }
         }
     }
 
     #[test]
-    fn test_error_source_chains() {
-        use std::error::Error;
+    fn test_cargo_project_invalid_cargo_toml() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path();
 
-        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Access denied");
-        let bundler_error = BundlerError::Io {
-            source: io_error,
-            path: Some(std::path::PathBuf::from("/test/path")),
-        };
+        // Create invalid Cargo.toml
+        fs::write(project_path.join("Cargo.toml"), "invalid toml content [[[")
+            .expect("Failed to write invalid Cargo.toml");
 
-        // Test that error implements Error trait properly
-        let error_trait: &dyn Error = &bundler_error;
-        assert!(error_trait.source().is_some(), "Should have error source");
+        let result = CargoProject::new(project_path);
+        assert!(result.is_err(), "Should fail with invalid Cargo.toml");
 
-        // Test error chain traversal
-        let mut current_error: &dyn Error = &bundler_error;
-        let mut chain_length = 0;
-
-        while let Some(source) = current_error.source() {
-            current_error = source;
-            chain_length += 1;
-
-            // Prevent infinite loops in error chains
-            assert!(chain_length < 10, "Error chain should not be infinite");
+        match result.unwrap_err() {
+            BundlerError::CargoMetadata { message, .. } => {
+                assert!(message.contains("Failed to obtain cargo metadata"));
+            }
+            other => panic!("Expected CargoMetadata error, got: {:?}", other),
         }
+    }
 
+    #[test]
+    fn test_cargo_project_missing_source_file() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path();
+
+        fs::create_dir_all(project_path.join("src")).expect("Failed to create src");
+
+        // Create Cargo.toml pointing to non-existent source file
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "missing_source"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "missing"
+path = "src/nonexistent.rs"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        let result = CargoProject::new(project_path);
+
+        // This should create a CargoProject but later operations might fail
+        // Let's test that the CargoProject creation itself works
+        match result {
+            Ok(project) => {
+                // Verify the binary source path points to the non-existent file
+                let binary_path = project.binary_source_path();
+                assert!(binary_path.to_string_lossy().contains("nonexistent.rs"));
+                assert!(!binary_path.exists(), "Source file should not exist");
+            }
+            Err(_) => {
+                // Also acceptable - cargo metadata might catch this
+            }
+        }
+    }
+
+    #[test]
+    fn test_cargo_project_accessors() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let project_path = temp_dir.path();
+
+        fs::create_dir_all(project_path.join("src")).expect("Failed to create src");
+
+        fs::write(
+            project_path.join("Cargo.toml"),
+            r#"
+[package]
+name = "accessor_test"
+version = "0.1.0"
+edition = "2021"
+"#,
+        )
+        .expect("Failed to write Cargo.toml");
+
+        fs::write(project_path.join("src/main.rs"), "fn main() {}")
+            .expect("Failed to write main.rs");
+
+        let project = CargoProject::new(project_path).expect("Should create CargoProject");
+
+        // Test all accessor methods
+        let base_path = project.base_path();
+        assert!(base_path.exists(), "Base path should exist");
+        assert!(base_path.is_dir(), "Base path should be directory");
+
+        let crate_name = project.crate_name();
+        assert_eq!(crate_name, "accessor_test", "Crate name should match");
+
+        let binary_source_path = project.binary_source_path();
         assert!(
-            chain_length > 0,
-            "Should have at least one error in the chain"
+            binary_source_path.to_string_lossy().contains("main.rs"),
+            "Should point to main.rs"
         );
     }
 }
