@@ -63,7 +63,7 @@ cargo install --path .
 Add to your `Cargo.toml`:
 ```toml
 [dependencies]
-cg-bundler = "0.1.0"
+cg-bundler = "1.0.0"
 ```
 
 ### Quick Start
