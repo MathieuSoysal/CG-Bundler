@@ -4,10 +4,9 @@ on:
   push:
     tags:
       - 'v*.*.*'
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -15,85 +14,8 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.release.outputs.upload_url }}
-      version: ${{ steps.get_version.outputs.version }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Get version from tag
-        id: get_version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          else
-            echo "version=dev-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Check if release exists
-        id: check_release
-        run: |
-          if gh release view "${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Release ${{ steps.get_version.outputs.version }} already exists"
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Release ${{ steps.get_version.outputs.version }} does not exist"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Delete existing release if it exists
-        if: steps.check_release.outputs.exists == 'true'
-        run: |
-          echo "Deleting existing release ${{ steps.get_version.outputs.version }}"
-          gh release delete "${{ steps.get_version.outputs.version }}" --yes --cleanup-tag
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Release
-        id: release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.get_version.outputs.version }}
-          name: Release ${{ steps.get_version.outputs.version }}
-          body: |
-            ## Changes in ${{ steps.get_version.outputs.version }}
-            
-            ### Features
-            - Rust code compression and minification
-            - Support for entire `src/` directories and individual `.rs` files
-            - AST-based parsing with `syn` for safe code transformation
-            - Command-line interface with `clap`
-            
-            ### Supported Platforms
-            - Linux (x86_64, ARM64)
-            - macOS (x86_64, ARM64/Apple Silicon)
-            - Windows (x86_64)
-            
-            ### Installation
-            Download the appropriate binary for your platform from the assets below.
-            
-            **Linux/macOS:**
-            ```bash
-            chmod +x cg-bundler-*
-            sudo mv cg-bundler-* /usr/local/bin/cg-bundler
-            ```
-            
-            **Windows:**
-            Add the downloaded `.exe` file to your PATH.
-            
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-
   build:
     name: Build for ${{ matrix.target }}
-    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -203,23 +125,48 @@ jobs:
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.create-release.outputs.version }}
+          tag_name: ${{ github.ref_name }}
           files: ./${{ matrix.name }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   verify-binaries:
     name: Verify Built Binaries
-    needs: [create-release, build]
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Wait for assets to be available
+        run: |
+          echo "Waiting for release assets to be fully uploaded..."
+          sleep 30
+
       - name: Download and verify release assets
         run: |
-          echo "Downloading release assets for ${{ needs.create-release.outputs.version }}"
+          echo "Downloading release assets for ${{ github.ref_name }}"
           
-          # Download all assets from the release
-          gh release download "${{ needs.create-release.outputs.version }}" --dir ./downloads
+          # Retry logic for downloading assets
+          max_attempts=5
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt to download assets..."
+            if gh release download "${{ github.ref_name }}" --dir ./downloads; then
+              echo "✅ Successfully downloaded assets"
+              break
+            else
+              echo "❌ Failed to download assets (attempt $attempt/$max_attempts)"
+              if [ $attempt -eq $max_attempts ]; then
+                echo "❌ All download attempts failed"
+                exit 1
+              fi
+              sleep 10
+              ((attempt++))
+            fi
+          done
           
           echo "Downloaded files:"
           ls -la ./downloads/
@@ -255,11 +202,8 @@ jobs:
 
   publish-crate:
     name: Publish to crates.io
-    needs: [create-release, build, verify-binaries]
+    needs: [build, verify-binaries]
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     # Only publish on actual tag pushes, not workflow_dispatch
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
