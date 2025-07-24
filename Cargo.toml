@@ -2,15 +2,25 @@
 name = "cg-bundler"
 version = "1.1.0"
 authors = ["MathieuSoysal"]
-description = "A Rust code compression tool that minifies Rust codebases into single file or one-line format"
+description = "A powerful Rust code bundler that combines multiple source files into a single, optimized file for competitive programming and code distribution. Features smart module expansion, code optimization, and minification."
 license = "MIT"
 repository = "https://github.com/MathieuSoysal/cg-bundler"
 homepage = "https://github.com/MathieuSoysal/cg-bundler"
 documentation = "https://docs.rs/cg-bundler"
 readme = "README.md"
-keywords = ["minify", "compress", "rust", "code-compression", "bundler"]
-categories = ["command-line-utilities", "development-tools"]
+keywords = ["bundler", "minify", "compress", "rust", "competitive-programming", "single-file", "code-bundler", "codeforces", "codingame"]
+categories = ["command-line-utilities", "development-tools", "compression", "development-tools::build-utils"]
 edition = "2021"
+rust-version = "1.75.0"
+exclude = [
+    "target/",
+    "test_project/",
+    "tests/",
+    ".github/",
+    "*.md",
+    "sonar-project.properties",
+    ".gitignore"
+]
 
 [[bin]]
 name = "cg-bundler"
@@ -36,3 +46,14 @@ assert_cmd = "2.0"
 predicates = "3.0"
 proptest = "1.0"
 syn = { version = "2.0", features = ["full", "parsing"] }
+
+[lints.clippy]
+all = "deny"
+pedantic = "deny"
+nursery = "deny"
+cargo = "deny"
+
+# Allow some pedantic lints that are too strict for this project
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
