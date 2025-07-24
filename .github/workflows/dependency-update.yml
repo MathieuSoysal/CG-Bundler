@@ -1,9 +1,13 @@
 name: Dependency Update
 
+permissions:
+  contents: read
+  pull-requests: write
+
 on:
   schedule:
     # Run weekly on Sundays at 00:00 UTC
-    - cron: '0 0 * * 0'
+   - cron: '0 0 * * 0'
   workflow_dispatch:
 
 jobs:
