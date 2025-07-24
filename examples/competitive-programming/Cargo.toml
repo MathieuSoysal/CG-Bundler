@@ -1,0 +1,16 @@
+[package]
+name = "competitive-example"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "competitive-example"
+path = "src/main.rs"
+
+[lib]
+name = "competitive_example"
+path = "src/lib.rs"
+
+[dependencies]
+# Common competitive programming dependencies
+# Note: These would be removed during bundling for submission
