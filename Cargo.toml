@@ -1,6 +1,6 @@
 [package]
 name = "cg-bundler"
-version = "1.1.0"
+version = "1.1.10"
 authors = ["MathieuSoysal"]
 description = "A powerful Rust code bundler that combines multiple source files into a single, optimized file for competitive programming and code distribution. Features smart module expansion, code optimization, and minification."
 license = "MIT"
