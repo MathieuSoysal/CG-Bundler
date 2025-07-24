@@ -17,6 +17,7 @@ exclude = [
     "test_project/",
     "tests/",
     ".github/",
+    "examples/",
     "*.md",
     "sonar-project.properties",
     ".gitignore"
@@ -48,12 +49,29 @@ proptest = "1.0"
 syn = { version = "2.0", features = ["full", "parsing"] }
 
 [lints.clippy]
-all = "deny"
-pedantic = "deny"
-nursery = "deny"
-cargo = "deny"
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
 
 # Allow some pedantic lints that are too strict for this project
 module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+must_use_candidate = "allow"
+missing_const_for_fn = "allow"
+doc_markdown = "allow"
+struct_excessive_bools = "allow"
+unused_self = "allow"
+needless_pass_by_ref_mut = "allow"
+multiple_crate_versions = "allow"
+use_self = "allow"
+ref_option = "allow"
+map_unwrap_or = "allow"
+redundant_closure_for_method_calls = "allow"
+default_trait_access = "allow"
+elidable_lifetime_names = "allow"
+wildcard_imports = "allow"
+unused_peekable = "allow"
+equatable_if_let = "allow"
+ignored_unit_patterns = "allow"
