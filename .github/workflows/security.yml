@@ -1,9 +1,13 @@
 name: Security Audit
 
+permissions:
+  contents: read
+  actions: write
+
 on:
   schedule:
     # Run daily at 02:00 UTC
-    - cron: '0 2 * * *'
+   - cron: '0 2 * * *'
   push:
     branches: [ master, main ]
   pull_request:
