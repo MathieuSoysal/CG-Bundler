@@ -230,7 +230,7 @@ fn main() {
 
 /// Test bundling error handling for non-existent projects
 #[test]
-#[should_panic]
+#[should_panic(expected = "Bundle should fail for non-existent project")]
 fn test_bundle_nonexistent_project() {
     let non_existent_path = Path::new("this_project_does_not_exist");
     bundle(non_existent_path).expect("Bundle should fail for non-existent project");
@@ -2344,4 +2344,130 @@ fn test_github_url_consistency_across_commands() {
             "Info command should contain consistent GitHub URL"
         );
     }
+}
+
+/// Integration test for the GitHub issue #6 fix
+/// Tests the competitive programming example with modern Rust syntax
+#[test]
+fn test_competitive_programming_modern_syntax_integration() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let project_path = temp_dir.path();
+
+    // Create a realistic competitive programming project structure
+    let src_dir = project_path.join("src");
+    fs::create_dir_all(&src_dir).expect("Failed to create src directory");
+
+    // Create Cargo.toml
+    fs::write(
+        project_path.join("Cargo.toml"),
+        r#"[package]
+name = "competitive_example"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "competitive_example"
+path = "src/main.rs"
+
+[lib]
+name = "competitive_example"
+path = "src/lib.rs"
+"#,
+    )
+    .expect("Failed to write Cargo.toml");
+
+    // Create lib.rs with competitive programming utilities
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+use std::io::{self, BufRead};
+
+pub struct Scanner {
+    reader: io::StdinLock<'static>,
+    buffer: Vec<String>,
+}
+
+impl Scanner {
+    pub fn new() -> Self {
+        Self {
+            reader: io::stdin().lock(),
+            buffer: vec![],
+        }
+    }
+
+    pub fn next<T: std::str::FromStr>(&mut self) -> T {
+        loop {
+            if let Some(token) = self.buffer.pop() {
+                return token.parse().ok().expect("Failed parse");
+            }
+            let mut input = String::new();
+            self.reader.read_line(&mut input).expect("Failed read");
+            self.buffer = input.split_whitespace().rev().map(String::from).collect();
+        }
+    }
+}
+
+pub fn solve() {
+    let mut scanner = Scanner::new();
+    let n: i32 = scanner.next();
+    let mut sum = 0;
+    
+    for _ in 0..n {
+        sum += scanner.next::<i32>();
+    }
+    
+    println!("{}", sum);
+}
+"#,
+    )
+    .expect("Failed to write lib.rs");
+
+    // Create main.rs with MODERN Rust syntax (no extern crate!)
+    fs::write(
+        src_dir.join("main.rs"),
+        r#"
+use competitive_example::*;
+
+fn main() {
+    solve();
+}
+"#,
+    )
+    .expect("Failed to write main.rs");
+
+    // Bundle the project
+    let result = bundle(project_path).expect("Bundle should succeed");
+
+    // Verify the bundled code
+    assert!(!result.is_empty(), "Bundle result should not be empty");
+
+    // Should NOT contain the use statement
+    assert!(
+        !result.contains("use competitive_example::*"),
+        "Use statement should be removed"
+    );
+
+    // Should contain the library code
+    assert!(
+        result.contains("struct Scanner"),
+        "Scanner struct should be included"
+    );
+    assert!(
+        result.contains("pub fn solve()"),
+        "solve function should be included"
+    );
+    assert!(
+        result.contains("fn main()"),
+        "main function should be included"
+    );
+
+    // Should contain the solve() call in main
+    assert!(
+        result.contains("solve();"),
+        "main should call solve function"
+    );
+
+    // Verify the bundled code can be parsed as valid Rust
+    let parsed = syn::parse_file(&result);
+    assert!(parsed.is_ok(), "Bundled code should be valid Rust syntax");
 }

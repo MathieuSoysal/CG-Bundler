@@ -1119,214 +1119,76 @@ edition = "2021"
         let result = bundler.bundle(&project_path);
         assert!(result.is_ok(), "Should work with valid project after error");
     }
+
+    #[test]
+    fn test_both_extern_crate_and_use_statement_no_duplication() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let base_path = temp_dir.path();
+        let crate_name = "test_lib";
+
+        // Create lib.rs with some content
+        let lib_path = base_path.join("lib.rs");
+        fs::write(
+            &lib_path,
+            r#"
+pub struct TestStruct {
+    pub value: i32,
 }
 
-// ==============================================
-// HELP AND ERROR DISPLAY TESTS
-// ==============================================
+pub fn test_function() -> i32 {
+    42
+}
+"#,
+        )
+        .expect("Failed to write lib.rs");
 
-/// Tests for enhanced help and error display functionality
-mod help_and_error_display_tests {
-    use super::*;
-    use std::process::Command;
+        let config = TransformConfig::default();
+        let mut transformer = CodeTransformer::new(base_path, crate_name, config);
 
-    #[test]
-    fn test_github_issues_url_consistency() {
-        // Test that the GitHub issues URL is consistent across the codebase
-        let expected_url = "https://github.com/MathieuSoysal/CG-Bundler/issues/new";
+        // Main.rs with BOTH extern crate AND use statements
+        let main_code = r#"
+extern crate test_lib;
+use test_lib::*;
 
-        // Since we can't directly test the display_bug_report_info function from main.rs,
-        // we test it indirectly by ensuring CLI commands contain the URL
-        let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let project_path = temp_dir.path().join("invalid_project");
+fn main() {
+    let s = TestStruct { value: 123 };
+    println!("Value: {}", s.value);
+    println!("Function result: {}", test_function());
+}
+"#;
 
-        // Create an invalid project to trigger error
-        fs::create_dir_all(&project_path).expect("Failed to create directory");
+        let mut file = syn::parse_file(main_code).expect("Failed to parse main code");
+        let result = transformer.transform_file(&mut file);
 
-        let output = Command::new("cargo")
-            .args(&[
-                "run",
-                "--bin",
-                "cg-bundler",
-                "--",
-                &project_path.to_string_lossy(),
-            ])
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .output()
-            .expect("Failed to execute command");
+        assert!(result.is_ok(), "Transform should succeed");
 
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Convert back to string to check the result
+        let transformed = prettyplease::unparse(&file);
+
+        // Both extern crate and use statements should be removed
         assert!(
-            stderr.contains(expected_url),
-            "Error output should contain GitHub issues URL"
-        );
-    }
-
-    #[test]
-    fn test_enhanced_error_message_components() {
-        // Test that the enhanced error message contains all expected components
-        let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let invalid_path = temp_dir
-            .path()
-            .join("completely_invalid_project_path_12345");
-
-        let output = Command::new("cargo")
-            .args(&[
-                "run",
-                "--bin",
-                "cg-bundler",
-                "--",
-                &invalid_path.to_string_lossy(),
-            ])
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .output()
-            .expect("Failed to execute command");
-
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        // Test all components of the enhanced error message
-        let expected_components = vec![
-            "Error:",
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "💡 Need help or found a bug?",
-            "Please report issues, request features, or get support at:",
-            "🔗 https://github.com/MathieuSoysal/CG-Bundler/issues/new",
-            "Your feedback helps improve CG-Bundler for everyone!",
-        ];
-
-        for component in expected_components {
-            assert!(
-                stderr.contains(component),
-                "Error message should contain: '{}'",
-                component
-            );
-        }
-    }
-
-    #[test]
-    fn test_help_message_structure() {
-        // Test that the help message has the expected structure
-        let output = Command::new("cargo")
-            .args(&["run", "--bin", "cg-bundler", "--", "--help"])
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .output()
-            .expect("Failed to execute command");
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        // Test help message structure
-        assert!(
-            stdout.contains("A Rust code bundler that combines multiple source files"),
-            "Should contain main description"
-        );
-
-        // Test bug report section
-        assert!(
-            stdout.contains("🐛 Found a bug or need help?"),
-            "Should contain bug report section title"
+            !transformed.contains("extern crate test_lib"),
+            "Extern crate statement should be removed"
         );
         assert!(
-            stdout
-                .contains("Report issues: https://github.com/MathieuSoysal/CG-Bundler/issues/new"),
-            "Should contain bug report URL"
+            !transformed.contains("use test_lib::*"),
+            "Use statement should be removed"
         );
 
-        // Test documentation section
+        // Library content should be included ONLY ONCE (no duplication)
+        let struct_count = transformed.matches("pub struct TestStruct").count();
+        let function_count = transformed.matches("pub fn test_function").count();
+
+        assert_eq!(struct_count, 1, "TestStruct should appear exactly once");
+        assert_eq!(
+            function_count, 1,
+            "test_function should appear exactly once"
+        );
+
+        // Main function should still be present
         assert!(
-            stdout.contains("📖 Documentation:"),
-            "Should contain documentation section title"
+            transformed.contains("fn main"),
+            "Main function should remain"
         );
-        assert!(
-            stdout.contains("https://docs.rs/cg-bundler"),
-            "Should contain documentation URL"
-        );
-    }
-
-    #[test]
-    fn test_visual_separators_consistency() {
-        // Test that visual separators are used consistently
-        let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let invalid_path = temp_dir.path().join("invalid");
-
-        let error_output = Command::new("cargo")
-            .args(&[
-                "run",
-                "--bin",
-                "cg-bundler",
-                "--",
-                &invalid_path.to_string_lossy(),
-            ])
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .output()
-            .expect("Failed to execute command");
-
-        let error_stderr = String::from_utf8_lossy(&error_output.stderr);
-
-        // Count visual separators in error output
-        let separator_count = error_stderr.matches("━").count();
-        assert!(
-            separator_count >= 120, // Should have two full lines of separators (60 chars each)
-            "Error should have visual separators, found {} separator chars",
-            separator_count
-        );
-
-        // Test info command visual separators
-        let info_output = Command::new("cargo")
-            .args(&["run", "--bin", "cg-bundler", "--", "--info"])
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .output()
-            .expect("Failed to execute command");
-
-        if info_output.status.success() {
-            let info_stdout = String::from_utf8_lossy(&info_output.stdout);
-            let info_separator_count = info_stdout.matches("━").count();
-            assert!(
-                info_separator_count >= 100, // Should have visual separators
-                "Info should have visual separators, found {} separator chars",
-                info_separator_count
-            );
-        }
-    }
-
-    #[test]
-    fn test_emoji_accessibility_features() {
-        // Test that emoji indicators are used for accessibility
-        let help_output = Command::new("cargo")
-            .args(&["run", "--bin", "cg-bundler", "--", "--help"])
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .output()
-            .expect("Failed to execute command");
-
-        let help_stdout = String::from_utf8_lossy(&help_output.stdout);
-
-        // Test for emojis that improve accessibility
-        assert!(help_stdout.contains("🐛"), "Should contain bug emoji");
-        assert!(
-            help_stdout.contains("📖"),
-            "Should contain documentation emoji"
-        );
-
-        // Test error emojis
-        let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let invalid_path = temp_dir.path().join("invalid");
-
-        let error_output = Command::new("cargo")
-            .args(&[
-                "run",
-                "--bin",
-                "cg-bundler",
-                "--",
-                &invalid_path.to_string_lossy(),
-            ])
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .output()
-            .expect("Failed to execute command");
-
-        let error_stderr = String::from_utf8_lossy(&error_output.stderr);
-        assert!(
-            error_stderr.contains("💡"),
-            "Should contain lightbulb emoji"
-        );
-        assert!(error_stderr.contains("🔗"), "Should contain link emoji");
     }
 }

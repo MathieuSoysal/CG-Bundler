@@ -63,8 +63,22 @@ impl<'a> CodeTransformer<'a> {
     /// Expand items (extern crate, use paths, etc.)
     pub fn expand_items(&mut self, items: &mut Vec<syn::Item>) -> Result<()> {
         if self.config.expand_modules {
-            self.expand_extern_crate(items)?;
-            self.expand_use_path(items);
+            // Check if we have both extern crate and use statements for the same crate
+            let has_extern_crate = items
+                .iter()
+                .any(|item| self.is_extern_crate(item, self.crate_name));
+            let has_use_statement = items
+                .iter()
+                .any(|item| self.is_use_path(item, self.crate_name));
+
+            if has_extern_crate {
+                // If extern crate exists, expand it and remove use statements
+                self.expand_extern_crate(items)?;
+                self.remove_use_paths(items);
+            } else if has_use_statement {
+                // If only use statements exist, expand the library from use statements
+                self.expand_use_path(items)?;
+            }
         }
 
         if self.config.remove_tests || self.config.remove_docs {
@@ -286,8 +300,8 @@ impl<'a> CodeTransformer<'a> {
         Ok(())
     }
 
-    /// Expand use paths
-    fn expand_use_path(&self, items: &mut Vec<syn::Item>) {
+    /// Remove use paths without expanding library (used when extern crate is present)
+    fn remove_use_paths(&self, items: &mut Vec<syn::Item>) {
         let mut new_items = vec![];
         for item in items.drain(..) {
             if !self.is_use_path(&item, self.crate_name) {
@@ -295,6 +309,44 @@ impl<'a> CodeTransformer<'a> {
             }
         }
         *items = new_items;
+    }
+
+    /// Expand use paths
+    fn expand_use_path(&self, items: &mut Vec<syn::Item>) -> Result<()> {
+        let mut new_items = vec![];
+        let mut library_expanded = false;
+
+        for item in items.drain(..) {
+            if self.is_use_path(&item, self.crate_name) {
+                // If this is a use statement for the current crate, expand the library
+                if !library_expanded {
+                    eprintln!(
+                        "Expanding crate {} in {} (from use statement)",
+                        self.crate_name,
+                        self.base_path.display()
+                    );
+                    let lib_path = self.base_path.join("lib.rs");
+                    let code = FileManager::read_file(&lib_path).map_err(|_| {
+                        BundlerError::ProjectStructure {
+                            message: "Failed to read lib.rs for use path expansion".to_string(),
+                        }
+                    })?;
+
+                    let lib = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
+                        message: format!("Failed to parse lib.rs: {e}"),
+                        file_path: Some(lib_path),
+                    })?;
+
+                    new_items.extend(lib.items);
+                    library_expanded = true;
+                }
+                // Don't add the use statement itself
+            } else {
+                new_items.push(item);
+            }
+        }
+        *items = new_items;
+        Ok(())
     }
 
     /// Expand module declarations
@@ -357,16 +409,34 @@ impl<'a> CodeTransformer<'a> {
         false
     }
 
-    /// Check if item is a use path
+    /// Check if item is a use path that references the crate
     fn is_use_path(&self, item: &syn::Item, first_segment: &str) -> bool {
         if let syn::Item::Use(ref item) = *item {
-            if let syn::UseTree::Path(ref path) = item.tree {
-                if path.ident == first_segment {
-                    return true;
-                }
-            }
+            return self.use_tree_references_crate(&item.tree, first_segment);
         }
         false
+    }
+
+    /// Check if a use tree references the specified crate
+    fn use_tree_references_crate(&self, tree: &syn::UseTree, crate_name: &str) -> bool {
+        match tree {
+            syn::UseTree::Path(path) => {
+                // Check if the first segment is the crate name
+                path.ident == crate_name
+            }
+            syn::UseTree::Name(name) => {
+                // Direct use of crate name: use crate_name;
+                name.ident == crate_name
+            }
+            syn::UseTree::Rename(rename) => {
+                // Renamed use: use crate_name as something_else;
+                rename.ident == crate_name
+            }
+            syn::UseTree::Glob(_) | syn::UseTree::Group(_) => {
+                // These should not happen at the top level since Glob and Group are always inside a Path
+                false
+            }
+        }
     }
 }
 
