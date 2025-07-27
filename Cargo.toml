@@ -33,12 +33,12 @@ syn = { version = "2.0", features = ["full", "extra-traits", "visit-mut", "parsi
 proc-macro2 = "1.0"
 quote = "1.0"
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 walkdir = "2.3"
-colored = "2.0"
+colored = "3.0"
 cargo_metadata = "0.21"
 prettyplease = "0.2"
-notify = "6.0"
+notify = "8.1"
 ctrlc = "3.0"
 
 [dev-dependencies]
