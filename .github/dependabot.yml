@@ -13,8 +13,6 @@ updates:
       time: "09:00"
       timezone: "UTC"
     open-pull-requests-limit: 10
-    reviewers:
-      - "MathieuSoysal"
     assignees:
       - "MathieuSoysal"
     labels:
@@ -47,8 +45,6 @@ updates:
       time: "09:00"
       timezone: "UTC"
     open-pull-requests-limit: 5
-    reviewers:
-      - "MathieuSoysal"
     assignees:
       - "MathieuSoysal"
     labels:

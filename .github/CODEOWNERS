@@ -1,0 +1,29 @@
+# Code owners for CG-Bundler repository
+# This file defines who should be automatically requested for review
+# when changes are made to specific files or directories.
+#
+# More information: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global code owner - applies to all files unless overridden
+* @MathieuSoysal
+
+# Rust source code
+/src/ @MathieuSoysal
+/Cargo.toml @MathieuSoysal
+/Cargo.lock @MathieuSoysal
+
+# Configuration files
+/.github/ @MathieuSoysal
+/deny.toml @MathieuSoysal
+/sonar-project.properties @MathieuSoysal
+
+# Documentation
+/README.md @MathieuSoysal
+/CHANGELOG.md @MathieuSoysal
+/CONTRIBUTING.md @MathieuSoysal
+
+# Examples
+/examples/ @MathieuSoysal
+
+# Tests
+/tests/ @MathieuSoysal
