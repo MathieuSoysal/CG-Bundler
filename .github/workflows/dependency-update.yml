@@ -7,8 +7,13 @@ permissions:
 on:
   schedule:
     # Run weekly on Sundays at 00:00 UTC
-   - cron: '0 0 * * 0'
+    - cron: '0 0 * * 0'
   workflow_dispatch:
+
+# Prevent multiple dependency updates from running simultaneously
+concurrency:
+  group: dependency-update
+  cancel-in-progress: true
 
 jobs:
   update-dependencies:
@@ -23,10 +28,39 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install cargo-edit
-        run: cargo install cargo-edit
+      # Cache cargo tools to avoid reinstalling them every time
+      - name: Cache cargo tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/bin/cargo-edit
+            ~/.cargo/bin/cargo-llvm-cov
+          key: ${{ runner.os }}-cargo-tools-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-tools-
+
+      - name: Install cargo tools
+        run: |
+          if ! command -v cargo-edit &> /dev/null; then
+            cargo install cargo-edit
+          fi
+
+      # Cache dependencies to speed up builds
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Update dependencies
+        id: update
         run: |
           # Update Cargo.toml dependencies to latest compatible versions
           cargo update
@@ -34,20 +68,20 @@ jobs:
           # Check if there are any changes
           if git diff --quiet Cargo.lock; then
             echo "No dependency updates available"
-            echo "HAS_UPDATES=false" >> $GITHUB_ENV
+            echo "has_updates=false" >> $GITHUB_OUTPUT
           else
             echo "Dependencies updated"
-            echo "HAS_UPDATES=true" >> $GITHUB_ENV
+            echo "has_updates=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Run tests after update
-        if: env.HAS_UPDATES == 'true'
+        if: steps.update.outputs.has_updates == 'true'
         run: |
           cargo test --verbose
           cargo build --release
 
       - name: Create Pull Request
-        if: env.HAS_UPDATES == 'true'
+        if: steps.update.outputs.has_updates == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
