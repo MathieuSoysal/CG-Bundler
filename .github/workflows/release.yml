@@ -123,7 +123,7 @@ jobs:
           copy target\${{ matrix.target }}\release\cg-bundler.exe ${{ matrix.name }}
 
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: ./${{ matrix.name }}
