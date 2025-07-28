@@ -9,9 +9,9 @@ on:
     # Run daily at 02:00 UTC
     - cron: '0 2 * * *'
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 # Prevent multiple security audits from running simultaneously
 concurrency:
