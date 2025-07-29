@@ -14,7 +14,10 @@ pub struct CargoProject {
 }
 
 impl CargoProject {
-    /// Create a new CargoProject by analyzing the given path
+    /// Create a new `CargoProject` by analyzing the given path
+    ///
+    /// # Errors
+    /// Returns an error if the Cargo project cannot be analyzed or parsed
     pub fn new<P: AsRef<Path>>(package_path: P) -> Result<Self> {
         let package_path = package_path.as_ref();
         let manifest_path = package_path.join("Cargo.toml");
@@ -29,7 +32,7 @@ impl CargoProject {
 
         let root_package = Self::find_root_package(&metadata, &manifest_path)?;
         let (binary_target, library_target) = Self::analyze_targets(&root_package)?;
-        let base_path = Self::determine_base_path(&library_target, &binary_target)?;
+        let base_path = Self::determine_base_path(library_target.as_ref(), &binary_target)?;
 
         Ok(Self {
             metadata,
@@ -41,39 +44,46 @@ impl CargoProject {
     }
 
     /// Get the root package
-    pub fn root_package(&self) -> &Package {
+    #[must_use]
+    pub const fn root_package(&self) -> &Package {
         &self.root_package
     }
 
     /// Get the binary target
-    pub fn binary_target(&self) -> &Target {
+    #[must_use]
+    pub const fn binary_target(&self) -> &Target {
         &self.binary_target
     }
 
     /// Get the library target if it exists
-    pub fn library_target(&self) -> Option<&Target> {
+    #[must_use]
+    pub const fn library_target(&self) -> Option<&Target> {
         self.library_target.as_ref()
     }
 
     /// Get the base path for source files
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn base_path(&self) -> &Path {
         &self.base_path
     }
 
-    /// Get the crate name (from library or binary target)
+    /// Get the crate name (prefer library name over binary name)
+    #[must_use]
     pub fn crate_name(&self) -> &str {
         self.library_target
             .as_ref()
-            .map(|lib| lib.name.as_str())
-            .unwrap_or(&self.binary_target.name)
+            .map_or(&self.binary_target.name, |lib| lib.name.as_str())
     }
 
     /// Get the binary source path
+    #[must_use]
     pub fn binary_source_path(&self) -> &Path {
         Path::new(&self.binary_target.src_path)
     }
 
     /// Get the library source path if it exists
+    #[must_use]
     pub fn library_source_path(&self) -> Option<&Path> {
         self.library_target
             .as_ref()
@@ -140,14 +150,14 @@ impl CargoProject {
 
     /// Determine the base path for source files
     fn determine_base_path(
-        library_target: &Option<Target>,
+        library_target: Option<&Target>,
         binary_target: &Target,
     ) -> Result<PathBuf> {
-        let reference_target = library_target.as_ref().unwrap_or(binary_target);
+        let reference_target = library_target.unwrap_or(binary_target);
 
         Path::new(&reference_target.src_path)
             .parent()
-            .map(|p| p.to_path_buf())
+            .map(std::path::Path::to_path_buf)
             .ok_or_else(|| BundlerError::ProjectStructure {
                 message: "Source path has no parent directory".to_string(),
             })
@@ -155,11 +165,17 @@ impl CargoProject {
 
     /// Check if a target has a specific kind
     fn target_is(target: &Target, target_kind: &str) -> bool {
-        target.kind.iter().any(|kind| kind == target_kind)
+        use cargo_metadata::TargetKind;
+        target.kind.iter().any(|kind| match kind {
+            TargetKind::Bin if target_kind == "bin" => true,
+            TargetKind::Lib if target_kind == "lib" => true,
+            _ => false,
+        })
     }
 
     /// Get the cargo metadata
-    pub fn metadata(&self) -> &Metadata {
+    #[must_use]
+    pub const fn metadata(&self) -> &Metadata {
         &self.metadata
     }
 }
@@ -366,7 +382,7 @@ path = "src/lib1.rs"
         // Test metadata access
         let metadata = project.metadata();
         assert!(!metadata.packages.is_empty());
-        assert_eq!(metadata.packages[0].name, "test_project");
+        assert_eq!(metadata.packages[0].name.as_str(), "test_project");
     }
 
     #[test]
