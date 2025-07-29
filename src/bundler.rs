@@ -12,6 +12,7 @@ pub struct Bundler {
 
 impl Bundler {
     /// Create a new bundler with default configuration
+    #[must_use]
     pub fn new() -> Self {
         Self {
             config: TransformConfig::default(),
@@ -19,17 +20,24 @@ impl Bundler {
     }
 
     /// Create a new bundler with custom configuration
-    pub fn with_config(config: TransformConfig) -> Self {
+    #[must_use]
+    pub const fn with_config(config: TransformConfig) -> Self {
         Self { config }
     }
 
     /// Bundle a Cargo package into a single source file
+    ///
+    /// # Errors
+    /// Returns an error if the project cannot be parsed or bundled
     pub fn bundle<P: AsRef<Path>>(&self, package_path: P) -> Result<String> {
         let project = CargoProject::new(package_path)?;
         self.bundle_project(&project)
     }
 
-    /// Bundle a CargoProject into a single source file
+    /// Bundle a `CargoProject` into a single source file
+    ///
+    /// # Errors
+    /// Returns an error if the project cannot be bundled
     pub fn bundle_project(&self, project: &CargoProject) -> Result<String> {
         let binary_source_path = project.binary_source_path();
 
@@ -57,7 +65,8 @@ impl Bundler {
     }
 
     /// Get the current configuration
-    pub fn config(&self) -> &TransformConfig {
+    #[must_use]
+    pub const fn config(&self) -> &TransformConfig {
         &self.config
     }
 

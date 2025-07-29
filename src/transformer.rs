@@ -8,6 +8,7 @@ use crate::file_manager::FileManager;
 
 /// Configuration for code transformation
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TransformConfig {
     pub remove_tests: bool,
     pub remove_docs: bool,
@@ -37,7 +38,8 @@ pub struct CodeTransformer<'a> {
 
 impl<'a> CodeTransformer<'a> {
     /// Create a new code transformer
-    pub fn new(base_path: &'a Path, crate_name: &'a str, config: TransformConfig) -> Self {
+    #[must_use]
+    pub const fn new(base_path: &'a Path, crate_name: &'a str, config: TransformConfig) -> Self {
         Self {
             base_path,
             crate_name,
@@ -46,6 +48,9 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Transform a file's AST according to configuration
+    ///
+    /// # Errors
+    /// Returns an error if module expansion fails
     pub fn transform_file(&mut self, file: &mut syn::File) -> Result<()> {
         if self.config.remove_docs {
             self.remove_file_level_docs(file);
@@ -61,15 +66,18 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Expand items (extern crate, use paths, etc.)
+    ///
+    /// # Errors
+    /// Returns an error if module expansion or file parsing fails
     pub fn expand_items(&mut self, items: &mut Vec<syn::Item>) -> Result<()> {
         if self.config.expand_modules {
             // Check if we have both extern crate and use statements for the same crate
             let has_extern_crate = items
                 .iter()
-                .any(|item| self.is_extern_crate(item, self.crate_name));
+                .any(|item| Self::is_extern_crate(item, self.crate_name));
             let has_use_statement = items
                 .iter()
-                .any(|item| self.is_use_path(item, self.crate_name));
+                .any(|item| Self::is_use_path(item, self.crate_name));
 
             if has_extern_crate {
                 // If extern crate exists, expand it and remove use statements
@@ -91,14 +99,14 @@ impl<'a> CodeTransformer<'a> {
     /// Remove file-level documentation
     fn remove_file_level_docs(&self, file: &mut syn::File) {
         if self.config.remove_docs {
-            file.attrs.retain(|attr| !self.is_doc_attribute(attr));
+            file.attrs.retain(|attr| !Self::is_doc_attribute(attr));
         }
     }
 
     /// Filter out tests and documentation
     fn filter_tests_and_docs(&self, items: &mut Vec<syn::Item>) {
         items.retain(|item| {
-            if self.config.remove_tests && self.has_test_attribute(item) {
+            if self.config.remove_tests && Self::has_test_attribute(item) {
                 return false;
             }
             true
@@ -106,14 +114,14 @@ impl<'a> CodeTransformer<'a> {
 
         if self.config.remove_docs {
             for item in items.iter_mut() {
-                self.remove_doc_attributes(item);
+                Self::remove_doc_attributes(item);
                 self.remove_doc_from_children(item);
             }
         }
     }
 
     /// Check if an attribute is a documentation attribute
-    fn is_doc_attribute(&self, attr: &syn::Attribute) -> bool {
+    fn is_doc_attribute(attr: &syn::Attribute) -> bool {
         if attr.path().is_ident("doc") {
             return true;
         }
@@ -125,34 +133,35 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Remove documentation from child elements
+    #[allow(clippy::only_used_in_recursion)]
     fn remove_doc_from_children(&self, item: &mut syn::Item) {
         match item {
             syn::Item::Struct(item_struct) => {
-                self.remove_docs_from_fields(&mut item_struct.fields);
+                Self::remove_docs_from_fields(&mut item_struct.fields);
             }
             syn::Item::Enum(item_enum) => {
                 for variant in &mut item_enum.variants {
-                    variant.attrs.retain(|attr| !self.is_doc_attribute(attr));
-                    self.remove_docs_from_fields(&mut variant.fields);
+                    variant.attrs.retain(|attr| !Self::is_doc_attribute(attr));
+                    Self::remove_docs_from_fields(&mut variant.fields);
                 }
             }
             syn::Item::Fn(item_fn) => {
-                self.remove_docs_from_fn_inputs(&mut item_fn.sig.inputs);
+                Self::remove_docs_from_fn_inputs(&mut item_fn.sig.inputs);
             }
             syn::Item::Impl(item_impl) => {
                 for impl_item in &mut item_impl.items {
-                    self.remove_docs_from_impl_item(impl_item);
+                    Self::remove_docs_from_impl_item(impl_item);
                 }
             }
             syn::Item::Trait(item_trait) => {
                 for trait_item in &mut item_trait.items {
-                    self.remove_docs_from_trait_item(trait_item);
+                    Self::remove_docs_from_trait_item(trait_item);
                 }
             }
             syn::Item::Mod(item_mod) => {
                 if let Some((_, ref mut mod_items)) = item_mod.content {
                     for mod_item in mod_items {
-                        self.remove_doc_attributes(mod_item);
+                        Self::remove_doc_attributes(mod_item);
                         self.remove_doc_from_children(mod_item);
                     }
                 }
@@ -162,16 +171,16 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Remove documentation from struct/enum fields
-    fn remove_docs_from_fields(&self, fields: &mut syn::Fields) {
+    fn remove_docs_from_fields(fields: &mut syn::Fields) {
         match fields {
             syn::Fields::Named(fields) => {
                 for field in &mut fields.named {
-                    field.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                    field.attrs.retain(|attr| !Self::is_doc_attribute(attr));
                 }
             }
             syn::Fields::Unnamed(fields) => {
                 for field in &mut fields.unnamed {
-                    field.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                    field.attrs.retain(|attr| !Self::is_doc_attribute(attr));
                 }
             }
             syn::Fields::Unit => {}
@@ -180,51 +189,54 @@ impl<'a> CodeTransformer<'a> {
 
     /// Remove documentation from function inputs
     fn remove_docs_from_fn_inputs(
-        &self,
         inputs: &mut syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     ) {
         for input in inputs {
             if let syn::FnArg::Typed(pat_type) = input {
-                pat_type.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                pat_type.attrs.retain(|attr| !Self::is_doc_attribute(attr));
             }
         }
     }
 
     /// Remove documentation from impl items
-    fn remove_docs_from_impl_item(&self, impl_item: &mut syn::ImplItem) {
+    fn remove_docs_from_impl_item(impl_item: &mut syn::ImplItem) {
         match impl_item {
             syn::ImplItem::Fn(method) => {
-                method.attrs.retain(|attr| !self.is_doc_attribute(attr));
-                self.remove_docs_from_fn_inputs(&mut method.sig.inputs);
+                method.attrs.retain(|attr| !Self::is_doc_attribute(attr));
+                Self::remove_docs_from_fn_inputs(&mut method.sig.inputs);
             }
             syn::ImplItem::Const(const_item) => {
-                const_item.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                const_item
+                    .attrs
+                    .retain(|attr| !Self::is_doc_attribute(attr));
             }
             syn::ImplItem::Type(type_item) => {
-                type_item.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                type_item.attrs.retain(|attr| !Self::is_doc_attribute(attr));
             }
             _ => {}
         }
     }
 
     /// Remove documentation from trait items
-    fn remove_docs_from_trait_item(&self, trait_item: &mut syn::TraitItem) {
+    fn remove_docs_from_trait_item(trait_item: &mut syn::TraitItem) {
         match trait_item {
             syn::TraitItem::Fn(method) => {
-                method.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                method.attrs.retain(|attr| !Self::is_doc_attribute(attr));
             }
             syn::TraitItem::Const(const_item) => {
-                const_item.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                const_item
+                    .attrs
+                    .retain(|attr| !Self::is_doc_attribute(attr));
             }
             syn::TraitItem::Type(type_item) => {
-                type_item.attrs.retain(|attr| !self.is_doc_attribute(attr));
+                type_item.attrs.retain(|attr| !Self::is_doc_attribute(attr));
             }
             _ => {}
         }
     }
 
     /// Check if an item has test attributes
-    fn has_test_attribute(&self, item: &syn::Item) -> bool {
+    fn has_test_attribute(item: &syn::Item) -> bool {
         let attrs = match item {
             syn::Item::Fn(item_fn) => &item_fn.attrs,
             syn::Item::Mod(item_mod) => &item_mod.attrs,
@@ -250,7 +262,7 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Remove documentation attributes from an item
-    fn remove_doc_attributes(&self, item: &mut syn::Item) {
+    fn remove_doc_attributes(item: &mut syn::Item) {
         let attrs = match item {
             syn::Item::Fn(item_fn) => &mut item_fn.attrs,
             syn::Item::Mod(item_mod) => &mut item_mod.attrs,
@@ -266,14 +278,14 @@ impl<'a> CodeTransformer<'a> {
             _ => return,
         };
 
-        attrs.retain(|attr| !self.is_doc_attribute(attr));
+        attrs.retain(|attr| !Self::is_doc_attribute(attr));
     }
 
     /// Expand extern crate declarations
     fn expand_extern_crate(&self, items: &mut Vec<syn::Item>) -> Result<()> {
         let mut new_items = vec![];
         for item in items.drain(..) {
-            if self.is_extern_crate(&item, self.crate_name) {
+            if Self::is_extern_crate(&item, self.crate_name) {
                 eprintln!(
                     "Expanding crate {} in {}",
                     self.crate_name,
@@ -304,7 +316,7 @@ impl<'a> CodeTransformer<'a> {
     fn remove_use_paths(&self, items: &mut Vec<syn::Item>) {
         let mut new_items = vec![];
         for item in items.drain(..) {
-            if !self.is_use_path(&item, self.crate_name) {
+            if !Self::is_use_path(&item, self.crate_name) {
                 new_items.push(item);
             }
         }
@@ -317,7 +329,7 @@ impl<'a> CodeTransformer<'a> {
         let mut library_expanded = false;
 
         for item in items.drain(..) {
-            if self.is_use_path(&item, self.crate_name) {
+            if Self::is_use_path(&item, self.crate_name) {
                 // If this is a use statement for the current crate, expand the library
                 if !library_expanded {
                     eprintln!(
@@ -350,7 +362,7 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Expand module declarations
-    fn expand_mods(&mut self, item: &mut syn::ItemMod) -> Result<()> {
+    fn expand_mods(&self, item: &mut syn::ItemMod) -> Result<()> {
         if item.content.is_some() {
             return Ok(());
         }
@@ -374,13 +386,13 @@ impl<'a> CodeTransformer<'a> {
             expander.visit_item_mut(item);
         }
 
-        item.content = Some((Default::default(), file.items));
+        item.content = Some((syn::token::Brace::default(), file.items));
         Ok(())
     }
 
     /// Expand crate paths
-    fn expand_crate_path(&mut self, path: &mut syn::Path) {
-        if self.path_starts_with(path, self.crate_name) {
+    fn expand_crate_path(&self, path: &mut syn::Path) {
+        if Self::path_starts_with(path, self.crate_name) {
             let new_segments = mem::replace(&mut path.segments, Punctuated::new())
                 .into_pairs()
                 .skip(1)
@@ -390,7 +402,7 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Check if item is an extern crate declaration
-    fn is_extern_crate(&self, item: &syn::Item, crate_name: &str) -> bool {
+    fn is_extern_crate(item: &syn::Item, crate_name: &str) -> bool {
         if let syn::Item::ExternCrate(ref item) = *item {
             if item.ident == crate_name {
                 return true;
@@ -400,7 +412,7 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Check if path starts with a specific segment
-    fn path_starts_with(&self, path: &syn::Path, segment: &str) -> bool {
+    fn path_starts_with(path: &syn::Path, segment: &str) -> bool {
         if let Some(el) = path.segments.first() {
             if el.ident == segment {
                 return true;
@@ -410,15 +422,15 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Check if item is a use path that references the crate
-    fn is_use_path(&self, item: &syn::Item, first_segment: &str) -> bool {
+    fn is_use_path(item: &syn::Item, first_segment: &str) -> bool {
         if let syn::Item::Use(ref item) = *item {
-            return self.use_tree_references_crate(&item.tree, first_segment);
+            return Self::use_tree_references_crate(&item.tree, first_segment);
         }
         false
     }
 
     /// Check if a use tree references the specified crate
-    fn use_tree_references_crate(&self, tree: &syn::UseTree, crate_name: &str) -> bool {
+    fn use_tree_references_crate(tree: &syn::UseTree, crate_name: &str) -> bool {
         match tree {
             syn::UseTree::Path(path) => {
                 // Check if the first segment is the crate name
@@ -440,10 +452,10 @@ impl<'a> CodeTransformer<'a> {
     }
 }
 
-impl<'a> VisitMut for CodeTransformer<'a> {
+impl VisitMut for CodeTransformer<'_> {
     fn visit_file_mut(&mut self, file: &mut syn::File) {
         if self.config.remove_docs {
-            file.attrs.retain(|attr| !self.is_doc_attribute(attr));
+            file.attrs.retain(|attr| !Self::is_doc_attribute(attr));
         }
 
         for attr in &mut file.attrs {
@@ -502,22 +514,22 @@ mod tests {
     #[test]
     fn test_is_doc_attribute() {
         let base_path = PathBuf::from("/tmp");
-        let transformer =
+        let _transformer =
             CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
 
         // Test with a doc attribute
         let doc_attr: syn::Attribute = syn::parse_quote!(#[doc = "test"]);
-        assert!(transformer.is_doc_attribute(&doc_attr));
+        assert!(CodeTransformer::is_doc_attribute(&doc_attr));
 
         // Test with a non-doc attribute
         let non_doc_attr: syn::Attribute = syn::parse_quote!(#[test]);
-        assert!(!transformer.is_doc_attribute(&non_doc_attr));
+        assert!(!CodeTransformer::is_doc_attribute(&non_doc_attr));
     }
 
     #[test]
     fn test_has_test_attribute() {
         let base_path = PathBuf::from("/tmp");
-        let transformer =
+        let _transformer =
             CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
 
         // Test function with test attribute
@@ -525,34 +537,40 @@ mod tests {
             #[test]
             fn test_function() {}
         };
-        assert!(transformer.has_test_attribute(&test_fn));
+        assert!(CodeTransformer::has_test_attribute(&test_fn));
 
         // Test regular function
         let regular_fn: syn::Item = syn::parse_quote! {
             fn regular_function() {}
         };
-        assert!(!transformer.has_test_attribute(&regular_fn));
+        assert!(!CodeTransformer::has_test_attribute(&regular_fn));
     }
 
     #[test]
     fn test_is_extern_crate() {
         let base_path = PathBuf::from("/tmp");
-        let transformer =
+        let _transformer =
             CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
 
         // Test extern crate with matching name
         let extern_crate_item: syn::Item = syn::parse_quote! {
             extern crate test_crate;
         };
-        assert!(transformer.is_extern_crate(&extern_crate_item, "test_crate"));
+        assert!(CodeTransformer::is_extern_crate(
+            &extern_crate_item,
+            "test_crate"
+        ));
 
         // Test extern crate with different name
-        assert!(!transformer.is_extern_crate(&extern_crate_item, "other_crate"));
+        assert!(!CodeTransformer::is_extern_crate(
+            &extern_crate_item,
+            "other_crate"
+        ));
 
         // Test non-extern-crate item
         let fn_item: syn::Item = syn::parse_quote! {
             fn test() {}
         };
-        assert!(!transformer.is_extern_crate(&fn_item, "test_crate"));
+        assert!(!CodeTransformer::is_extern_crate(&fn_item, "test_crate"));
     }
 }
