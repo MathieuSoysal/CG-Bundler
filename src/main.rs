@@ -1,5 +1,5 @@
 use clap::Parser;
-use colored::*;
+use colored::Colorize;
 use std::fs;
 use std::path::PathBuf;
 use std::process;
@@ -39,6 +39,7 @@ fn display_bug_report_info() {
 #[command(
     long_about = "A Rust code bundler that combines multiple source files into a single file.\nBy default, bundles the current directory or the specified project path.\n\n🐛 Found a bug or need help?\n   Report issues: https://github.com/MathieuSoysal/CG-Bundler/issues/new\n\n📖 Documentation:\n   https://docs.rs/cg-bundler"
 )]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     /// Path to the Cargo project directory (defaults to current directory)
     #[arg(
@@ -102,6 +103,7 @@ pub struct Cli {
 
 impl Cli {
     /// Get the effective project path, using current directory as default
+    #[must_use]
     pub fn get_project_path(&self) -> PathBuf {
         self.project_path
             .clone()
@@ -109,12 +111,14 @@ impl Cli {
     }
 
     /// Check if verbose mode is enabled
-    pub fn is_verbose(&self) -> bool {
+    #[must_use]
+    pub const fn is_verbose(&self) -> bool {
         self.verbose
     }
 
     /// Get transform configuration from the CLI flags
-    pub fn get_transform_config(&self) -> TransformConfig {
+    #[must_use]
+    pub const fn get_transform_config(&self) -> TransformConfig {
         TransformConfig {
             remove_tests: !self.keep_tests,
             remove_docs: !self.keep_docs,
@@ -125,22 +129,26 @@ impl Cli {
     }
 
     /// Get the output file path
-    pub fn get_output(&self) -> Option<&PathBuf> {
+    #[must_use]
+    pub const fn get_output(&self) -> Option<&PathBuf> {
         self.output.as_ref()
     }
 
     /// Check if pretty formatting is requested
-    pub fn is_pretty(&self) -> bool {
+    #[must_use]
+    pub const fn is_pretty(&self) -> bool {
         self.pretty
     }
 
     /// Check if minification is requested
-    pub fn is_minify(&self) -> bool {
+    #[must_use]
+    pub const fn is_minify(&self) -> bool {
         self.minify || self.m2
     }
 
     /// Check if aggressive minification is requested
-    pub fn is_aggressive_minify(&self) -> bool {
+    #[must_use]
+    pub const fn is_aggressive_minify(&self) -> bool {
         self.m2
     }
 }
@@ -409,7 +417,7 @@ fn format_with_rustfmt(code: &str, verbose: bool) -> Option<String> {
 
 fn minify_code(code: &str) -> String {
     code.lines()
-        .map(|line| line.trim())
+        .map(str::trim)
         .filter(|line| !line.is_empty())
         .collect::<Vec<&str>>()
         .join(" ")
@@ -424,7 +432,7 @@ fn aggressive_minify_code(code: &str) -> String {
     let mut placeholder_index = 0;
 
     // Extract string literals and replace with placeholders
-    let mut chars = result.chars().peekable();
+    let mut chars = result.chars();
     let mut output = String::new();
 
     while let Some(ch) = chars.next() {
@@ -584,7 +592,7 @@ fn handle_watch_command(cli: &Cli) -> Result<(), BundlerError> {
 
     loop {
         // Check for shutdown signal
-        if let Ok(()) = shutdown_rx.try_recv() {
+        if shutdown_rx.try_recv() == Ok(()) {
             println!("\n{} Received shutdown signal", "🛑".yellow());
             break;
         }
@@ -608,7 +616,7 @@ fn handle_watch_command(cli: &Cli) -> Result<(), BundlerError> {
                         }
 
                         match handle_bundle_command(cli) {
-                            Ok(_) => println!("{} Rebuild successful!\n", "✅".green()),
+                            Ok(()) => println!("{} Rebuild successful!\n", "✅".green()),
                             Err(e) => eprintln!("{} Rebuild failed: {}\n", "❌".red(), e),
                         }
                     }
@@ -635,8 +643,7 @@ fn should_rebuild(event: &notify::Event) -> bool {
             event.paths.iter().any(|path| {
                 path.extension()
                     .and_then(|ext| ext.to_str())
-                    .map(|ext| ext == "rs")
-                    .unwrap_or(false)
+                    .is_some_and(|ext| ext == "rs")
             })
         }
         _ => false,

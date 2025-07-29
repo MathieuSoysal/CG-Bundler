@@ -33,36 +33,36 @@ pub enum BundlerError {
 impl fmt::Display for BundlerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BundlerError::Io { source, path } => {
+            Self::Io { source, path } => {
                 if let Some(path) = path {
                     write!(f, "IO error with file '{}': {source}", path.display())
                 } else {
                     write!(f, "IO error: {source}")
                 }
             }
-            BundlerError::CargoMetadata { message, .. } => {
+            Self::CargoMetadata { message, .. } => {
                 write!(f, "Cargo metadata error: {message}")
             }
-            BundlerError::Parsing { message, file_path } => {
+            Self::Parsing { message, file_path } => {
                 if let Some(path) = file_path {
                     write!(f, "Parsing error in '{}': {message}", path.display())
                 } else {
                     write!(f, "Parsing error: {message}")
                 }
             }
-            BundlerError::ProjectStructure { message } => {
+            Self::ProjectStructure { message } => {
                 write!(f, "Project structure error: {message}")
             }
-            BundlerError::MultipleBinaryTargets { target_count } => {
+            Self::MultipleBinaryTargets { target_count } => {
                 write!(
                     f,
                     "Multiple binary targets found ({target_count}). Only single binary target is supported."
                 )
             }
-            BundlerError::NoBinaryTarget => {
+            Self::NoBinaryTarget => {
                 write!(f, "No binary target found in the project")
             }
-            BundlerError::MultipleLibraryTargets { target_count } => {
+            Self::MultipleLibraryTargets { target_count } => {
                 write!(
                     f,
                     "Multiple library targets found ({target_count}). Only single library target is supported."
@@ -75,8 +75,8 @@ impl fmt::Display for BundlerError {
 impl std::error::Error for BundlerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            BundlerError::Io { source, .. } => Some(source),
-            BundlerError::CargoMetadata {
+            Self::Io { source, .. } => Some(source),
+            Self::CargoMetadata {
                 source: Some(source),
                 ..
             } => Some(source),
@@ -87,7 +87,7 @@ impl std::error::Error for BundlerError {
 
 impl From<io::Error> for BundlerError {
     fn from(error: io::Error) -> Self {
-        BundlerError::Io {
+        Self::Io {
             source: error,
             path: None,
         }
@@ -96,7 +96,7 @@ impl From<io::Error> for BundlerError {
 
 impl From<cargo_metadata::Error> for BundlerError {
     fn from(error: cargo_metadata::Error) -> Self {
-        BundlerError::CargoMetadata {
+        Self::CargoMetadata {
             message: error.to_string(),
             source: Some(error),
         }
