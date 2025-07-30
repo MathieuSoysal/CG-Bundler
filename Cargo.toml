@@ -33,12 +33,12 @@ syn = { version = "2.0", features = ["full", "extra-traits", "visit-mut", "parsi
 proc-macro2 = "1.0"
 quote = "1.0"
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 walkdir = "2.3"
-colored = "2.0"
-cargo_metadata = "0.18"
+colored = "3.0"
+cargo_metadata = "0.21"
 prettyplease = "0.2"
-notify = "6.0"
+notify = "8.1"
 ctrlc = "3.0"
 
 [dev-dependencies]
@@ -54,24 +54,5 @@ pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }
 
-# Allow some pedantic lints that are too strict for this project
-module_name_repetitions = "allow"
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-must_use_candidate = "allow"
-missing_const_for_fn = "allow"
-doc_markdown = "allow"
-struct_excessive_bools = "allow"
-unused_self = "allow"
-needless_pass_by_ref_mut = "allow"
+# Allow multiple crate versions as this is often unavoidable with system dependencies
 multiple_crate_versions = "allow"
-use_self = "allow"
-ref_option = "allow"
-map_unwrap_or = "allow"
-redundant_closure_for_method_calls = "allow"
-default_trait_access = "allow"
-elidable_lifetime_names = "allow"
-wildcard_imports = "allow"
-unused_peekable = "allow"
-equatable_if_let = "allow"
-ignored_unit_patterns = "allow"

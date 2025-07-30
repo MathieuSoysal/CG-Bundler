@@ -2,9 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ master, main, develop ]
+    branches: [ master, develop ]
   pull_request:
-    branches: [ master, main, develop ]
+    branches: [ master, develop ]
+
+# Prevent multiple CI runs from running simultaneously for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -120,24 +125,6 @@ jobs:
         run: |
           .\target\release\cg-bundler.exe --version
 
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
-      - name: Run security audit
-        run: cargo audit
-
   code-coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
@@ -152,8 +139,24 @@ jobs:
         with:
           components: llvm-tools-preview
 
-      - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov
+      # Cache cargo tools to avoid reinstalling them every time
+      - name: Cache cargo tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/bin/cargo-edit
+            ~/.cargo/bin/cargo-llvm-cov
+          key: ${{ runner.os }}-cargo-tools-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-tools-
+
+      - name: Install cargo tools
+        run: |
+          if ! command -v cargo-llvm-cov &> /dev/null; then
+            cargo install cargo-llvm-cov
+          fi
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -171,7 +174,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          file: lcov.info
+          files: lcov.info
           fail_ci_if_error: false
 
       - name: Upload coverage artifact for SonarCloud

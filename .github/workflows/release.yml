@@ -9,6 +9,11 @@ permissions:
   contents: write
   packages: write
 
+# Prevent multiple releases from running simultaneously
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel releases
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
