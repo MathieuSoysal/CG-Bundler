@@ -12,7 +12,7 @@
 
 **A powerful Rust code bundler that combines multiple source files into a single, optimized file for competitive programming and code distribution.**
 
-[📖 Documentation](https://docs.rs/cg-bundler) | [🚀 Getting Started](#getting-started) | [💡 Examples](#examples) | [🤝 Contributing](#contributing)
+[📖 Documentation](https://docs.rs/cg-bundler) | [🚀 Getting Started](https://github.com/MathieuSoysal/CG-Bundler?tab=readme-ov-file#-getting-started) | [💡 Examples](https://github.com/MathieuSoysal/CG-Bundler?tab=readme-ov-file#-examples) | [🤝 Contributing](https://github.com/MathieuSoysal/CG-Bundler?tab=readme-ov-file#-contributing)
 
 </div>
 
