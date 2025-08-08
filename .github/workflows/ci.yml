@@ -1,10 +1,17 @@
 name: CI
+run-name: CI ${{ github.event_name }} by @${{ github.actor }}
 
 on:
   push:
     branches: [ master, develop ]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
     branches: [ master, develop ]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
 
 # Prevent multiple CI runs from running simultaneously for the same branch
 concurrency:
@@ -210,3 +217,9 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: >
+            -Dsonar.rust.clippy.reportPaths=clippy.json
+            -Dsonar.coverageReportPaths=lcov.info

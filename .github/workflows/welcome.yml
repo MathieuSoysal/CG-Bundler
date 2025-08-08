@@ -9,6 +9,10 @@ on:
 jobs:
   welcome:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - name: Welcome new issue authors
         if: github.event_name == 'issues'
