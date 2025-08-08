@@ -1,0 +1,78 @@
+name: Welcome New Contributors
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Welcome new issue authors
+        if: github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const author = context.payload.issue.user.login;
+            const issueNumber = context.payload.issue.number;
+            
+            // Check if this is the user's first issue
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              creator: author,
+              state: 'all'
+            });
+            
+            if (issues.length === 1) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: "👋 Welcome to CG Bundler, @" + author + "! Thank you for opening your first issue.\n\nWe appreciate you taking the time to report this. Our team will review it shortly and get back to you.\n\nIn the meantime, you might want to:\n- 📖 Check out our [Contributing Guidelines](https://github.com/MathieuSoysal/CG-Bundler/blob/master/CONTRIBUTING.md)\n- 💬 Join our community discussions\n- ⭐ Give us a star if you find this project useful!\n\nThanks for contributing to the Rust community! 🦀"
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: "Thanks for opening this issue, @" + author + "! We'll review it and get back to you soon. 🚀"
+              });
+            }
+
+      - name: Welcome new PR authors  
+        if: github.event_name == 'pull_request_target'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const author = context.payload.pull_request.user.login;
+            const prNumber = context.payload.pull_request.number;
+            
+            // Check if this is the user's first PR
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              sort: 'created',
+              direction: 'desc'
+            });
+            
+            const authorPrs = prs.filter(pr => pr.user.login === author);
+            
+            if (authorPrs.length === 1) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: "🎉 Welcome to CG Bundler, @" + author + "! Thank you for your first pull request.\n\nYour contribution is greatly appreciated! Here's what happens next:\n\n1. ✅ Our automated checks will run (tests, linting, etc.)\n2. 👀 A maintainer will review your changes\n3. 💬 We might provide feedback or request changes\n4. 🚀 Once approved, we'll merge your PR!\n\nPlease make sure:\n- [ ] Your code follows our [style guidelines](https://github.com/MathieuSoysal/CG-Bundler/blob/master/CONTRIBUTING.md#code-style)\n- [ ] Tests are passing (`cargo test`)\n- [ ] You've updated documentation if needed\n\nThanks for contributing to the Rust community! 🦀"
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: "Thanks for the pull request, @" + author + "! We'll review it and get back to you soon. 🚀"
+              });
+            }

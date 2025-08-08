@@ -1,0 +1,72 @@
+name: Bug report
+description: File a bug report to help us improve CG Bundler
+title: "[Bug]: "
+labels: [bug, needs triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! 🐛
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Run command '...'
+        2. With project structure '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen
+      placeholder: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened instead
+      placeholder: What actually happened?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide your environment details
+      placeholder: |
+        - OS: [e.g. Windows 11, macOS 13, Ubuntu 22.04]
+        - Rust version: [e.g. 1.75.0]
+        - CG Bundler version: [e.g. 1.1.10]
+        - Project type: [e.g. simple binary, library with binary, etc.]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      description: Paste any relevant logs or add screenshots to help explain your problem.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues to ensure this bug hasn't been reported
+          required: true
+        - label: I have read the Contributing Guidelines
+          required: true
+        - label: This bug is reproducible with the latest version of CG Bundler
+          required: true

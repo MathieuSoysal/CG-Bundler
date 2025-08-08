@@ -1,3 +1,6 @@
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @MathieuSoysal
 # Code owners for CG-Bundler repository
 # This file defines who should be automatically requested for review
 # when changes are made to specific files or directories.

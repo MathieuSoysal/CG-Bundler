@@ -1,0 +1,59 @@
+name: Feature request
+description: Suggest a new feature or enhancement for CG Bundler
+title: "[Feature]: "
+labels: [enhancement, needs triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! 🚀
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem description
+      description: Is your feature request related to a problem? Please describe.
+      placeholder: I'm frustrated when...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the solution you'd like to see
+      placeholder: I would like to see...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative solutions
+      description: Describe any alternative solutions or features you've considered
+      placeholder: Alternative approaches could be...
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Low - Nice to have
+        - Medium - Would improve workflow
+        - High - Critical for my use case
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: Describe your specific use case and how this feature would help
+      placeholder: I want to use CG Bundler to...
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add any other context, screenshots, or examples about the feature request
+      placeholder: Additional information...
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have searched existing issues and discussions
+          required: true

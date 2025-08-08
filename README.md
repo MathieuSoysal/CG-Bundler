@@ -178,24 +178,18 @@ fn main() {
 
 ## 🤝 Contributing
 
-We welcome contributions! Here's how to get started:
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+- Setting up the development environment
+- Code style and conventions
+- Submitting pull requests
+- Running tests
 
-### Development Setup
-```bash
-# Clone the repository
-git clone https://github.com/MathieuSoysal/cg-bundler.git
-cd cg-bundler
+### Getting Help & Community
 
-# Install dependencies and build
-cargo build
-
-# Run tests
-cargo test
-
-# Check formatting and linting
-cargo fmt --check
-cargo clippy -- -D warnings
-```
+- 💬 **GitHub Discussions**: Ask questions, share ideas, and get help
+- 🐛 **Issues**: Report bugs and request features
+- 📖 **Documentation**: Check our comprehensive guides
+- 🔧 **Contributing**: Follow our contributing guidelines
 
 ### Reporting Issues
 Found a bug? Have a feature request? Please [create an issue](https://github.com/MathieuSoysal/cg-bundler/issues) with:
