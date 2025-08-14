@@ -3,17 +3,16 @@ run-name: CI ${{ github.event_name }} by @${{ github.actor }}
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [master, develop]
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
   pull_request:
-    branches: [ master, develop ]
+    branches: [master, develop]
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
 
-# Prevent multiple CI runs from running simultaneously for the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -28,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      clippy-available: ${{ steps.clippy-check.outputs.available }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,60 +38,62 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache cargo registry
+      # Optimized caching strategy following GitHub best practices
+      - name: Cache Rust dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-
-
-      - name: Cache target directory
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-target-
 
       - name: Check formatting
         run: cargo fmt -- --check
 
       - name: Run clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Generate clippy report for SonarCloud
-        run: cargo clippy --message-format=json > clippy.json
+        id: clippy-check
+        run: |
+          cargo clippy --all-targets --all-features --message-format=json > clippy.json
+          echo "available=true" >> $GITHUB_OUTPUT
 
       - name: Upload clippy report
+        if: steps.clippy-check.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: clippy-report
           path: clippy.json
+          retention-days: 7
 
-      - name: Run tests
-        run: cargo test --verbose
+      - name: Run unit tests
+        run: cargo test --lib --bins
 
       - name: Run integration tests
-        run: cargo test --test integration_tests
+        run: cargo test --test '*'
 
       - name: Build release binary
         run: cargo build --release
 
       - name: Test CLI functionality
         run: |
-          # Test basic CLI functionality
           ./target/release/cg-bundler --version
           ./target/release/cg-bundler --help
 
-  build-cross-platform:
+  # Simplified cross-platform build (removed redundancy with release.yml)
+  build-matrix:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
@@ -101,36 +104,31 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry
+      - name: Cache Rust dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-build-
             ${{ runner.os }}-cargo-
-
-      - name: Cache target directory
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-target-
 
       - name: Build
         run: cargo build --release
 
-      - name: Test binary (Unix)
-        if: matrix.os != 'windows-latest'
+      - name: Test binary
+        shell: bash
         run: |
-          ./target/release/cg-bundler --version
-
-      - name: Test binary (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          .\target\release\cg-bundler.exe --version
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            ./target/release/cg-bundler.exe --version
+          else
+            ./target/release/cg-bundler --version
+          fi
 
   code-coverage:
     name: Code Coverage
@@ -140,39 +138,31 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
 
-      # Cache cargo tools to avoid reinstalling them every time
-      - name: Cache cargo tools
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Cache Rust dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/cargo-audit
-            ~/.cargo/bin/cargo-deny
-            ~/.cargo/bin/cargo-edit
-            ~/.cargo/bin/cargo-llvm-cov
-          key: ${{ runner.os }}-cargo-tools-${{ hashFiles('**/Cargo.lock') }}
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-tools-
-
-      - name: Install cargo tools
-        run: |
-          if ! command -v cargo-llvm-cov &> /dev/null; then
-            cargo install cargo-llvm-cov
-          fi
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
+            ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-coverage-
             ${{ runner.os }}-cargo-
 
       - name: Generate code coverage
@@ -183,39 +173,43 @@ jobs:
         with:
           files: lcov.info
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage artifact for SonarCloud
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: lcov.info
+          retention-days: 7
 
   sonarcloud:
-    name: SonarCloud
+    name: SonarCloud Analysis
     runs-on: ubuntu-latest
     needs: [test, code-coverage]
     permissions:
       contents: read
       pull-requests: write
-      checks: write
+    if: always() && (needs.test.result == 'success' || needs.code-coverage.result == 'success')
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      
+          fetch-depth: 0
+
       - name: Download clippy report
         uses: actions/download-artifact@v4
         with:
           name: clippy-report
-          
+        continue-on-error: true
+
       - name: Download coverage report
         uses: actions/download-artifact@v4
         with:
           name: coverage-report
-          
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        continue-on-error: true
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v5
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

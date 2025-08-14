@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
 
-/// Unit tests for the TransformConfig struct
+/// Unit tests for the `TransformConfig` struct
 mod transform_config_tests {
     use super::*;
 
@@ -60,7 +60,7 @@ mod transform_config_tests {
     #[test]
     fn test_config_debug() {
         let config = TransformConfig::default();
-        let debug_string = format!("{:?}", config);
+        let debug_string = format!("{config:?}");
 
         assert!(debug_string.contains("TransformConfig"));
         assert!(debug_string.contains("remove_tests"));
@@ -71,7 +71,7 @@ mod transform_config_tests {
     }
 }
 
-/// Unit tests for the BundlerError enum
+/// Unit tests for the `BundlerError` enum
 mod bundler_error_tests {
     use super::*;
     use std::io;
@@ -83,10 +83,10 @@ mod bundler_error_tests {
 
         let bundler_error = BundlerError::Io {
             source: io_err,
-            path: Some(path.clone()),
+            path: Some(path),
         };
 
-        let error_string = format!("{}", bundler_error);
+        let error_string = format!("{bundler_error}");
         assert!(error_string.contains("IO error"));
         assert!(error_string.contains("/test/path.rs"));
         assert!(error_string.contains("File not found"));
@@ -101,10 +101,10 @@ mod bundler_error_tests {
             path: None,
         };
 
-        let error_string = format!("{}", bundler_error);
+        let error_string = format!("{bundler_error}");
         assert!(error_string.contains("IO error"));
         assert!(error_string.contains("Permission denied"));
-        assert!(!error_string.contains("/"));
+        assert!(!error_string.contains('/'));
     }
 
     #[test]
@@ -113,10 +113,10 @@ mod bundler_error_tests {
 
         let bundler_error = BundlerError::Parsing {
             message: "Unexpected token".to_string(),
-            file_path: Some(path.clone()),
+            file_path: Some(path),
         };
 
-        let error_string = format!("{}", bundler_error);
+        let error_string = format!("{bundler_error}");
         assert!(error_string.contains("Parsing error"));
         assert!(error_string.contains("/src/main.rs"));
         assert!(error_string.contains("Unexpected token"));
@@ -129,10 +129,10 @@ mod bundler_error_tests {
             file_path: None,
         };
 
-        let error_string = format!("{}", bundler_error);
+        let error_string = format!("{bundler_error}");
         assert!(error_string.contains("Parsing error"));
         assert!(error_string.contains("Invalid syntax"));
-        assert!(!error_string.contains("/"));
+        assert!(!error_string.contains('/'));
     }
 
     #[test]
@@ -142,7 +142,7 @@ mod bundler_error_tests {
             source: None,
         };
 
-        let error_string = format!("{}", bundler_error);
+        let error_string = format!("{bundler_error}");
         assert!(error_string.contains("Cargo metadata error"));
         assert!(error_string.contains("Failed to parse Cargo.toml"));
     }
@@ -153,7 +153,7 @@ mod bundler_error_tests {
             message: "Invalid project layout".to_string(),
         };
 
-        let error_string = format!("{}", bundler_error);
+        let error_string = format!("{bundler_error}");
         assert!(error_string.contains("Project structure error"));
         assert!(error_string.contains("Invalid project layout"));
     }
@@ -162,16 +162,16 @@ mod bundler_error_tests {
     fn test_multiple_binary_targets_error() {
         let bundler_error = BundlerError::MultipleBinaryTargets { target_count: 3 };
 
-        let error_string = format!("{}", bundler_error);
+        let error_string = format!("{bundler_error}");
         assert!(error_string.contains("Multiple binary targets"));
-        assert!(error_string.contains("3"));
+        assert!(error_string.contains('3'));
     }
 
     #[test]
     fn test_no_binary_target_error() {
         let bundler_error = BundlerError::NoBinaryTarget;
 
-        let error_string = format!("{}", bundler_error);
+        let error_string = format!("{bundler_error}");
         assert!(error_string.contains("No binary target"));
     }
 
@@ -179,9 +179,9 @@ mod bundler_error_tests {
     fn test_multiple_library_targets_error() {
         let bundler_error = BundlerError::MultipleLibraryTargets { target_count: 2 };
 
-        let error_string = format!("{}", bundler_error);
+        let error_string = format!("{bundler_error}");
         assert!(error_string.contains("Multiple library targets"));
-        assert!(error_string.contains("2"));
+        assert!(error_string.contains('2'));
     }
 
     #[test]
@@ -190,7 +190,7 @@ mod bundler_error_tests {
             message: "Test error".to_string(),
         };
 
-        let debug_string = format!("{:?}", bundler_error);
+        let debug_string = format!("{bundler_error:?}");
         assert!(debug_string.contains("ProjectStructure"));
         assert!(debug_string.contains("Test error"));
     }
@@ -210,7 +210,7 @@ mod bundler_error_tests {
     }
 }
 
-/// Unit tests for the FileManager
+/// Unit tests for the `FileManager`
 mod file_manager_tests {
     use super::*;
 
@@ -291,7 +291,7 @@ mod file_manager_tests {
     }
 }
 
-/// Unit tests for CodeTransformer
+/// Unit tests for `CodeTransformer`
 mod code_transformer_tests {
     use super::*;
 
@@ -302,11 +302,11 @@ mod code_transformer_tests {
         let crate_name = "test_crate";
         let config = TransformConfig::default();
 
-        let _transformer = CodeTransformer::new(base_path, crate_name, config.clone());
+        let _transformer = CodeTransformer::new(base_path, crate_name, config);
 
         // We can't directly access private fields, but we can test that creation succeeds
         // and the transformer is ready to use
-        assert!(true, "CodeTransformer created successfully");
+        // CodeTransformer created successfully
     }
 
     #[test]
@@ -358,9 +358,9 @@ fn documented_function() {
         assert!(result.is_ok(), "Transform should succeed");
 
         // Convert back to string to check if docs were removed
-        let transformed = prettyplease::unparse(&file);
+        let code_output = prettyplease::unparse(&file);
         assert!(
-            !transformed.contains("This is a documented function"),
+            !code_output.contains("This is a documented function"),
             "Documentation should be removed"
         );
     }
@@ -404,17 +404,17 @@ mod tests {
         assert!(result.is_ok(), "Transform should succeed");
 
         // Convert back to string to check if tests were removed
-        let transformed = prettyplease::unparse(&file);
+        let code_output = prettyplease::unparse(&file);
         assert!(
-            !transformed.contains("#[test]"),
+            !code_output.contains("#[test]"),
             "Test attributes should be removed"
         );
         assert!(
-            !transformed.contains("test_function"),
+            !code_output.contains("test_function"),
             "Test functions should be removed"
         );
         assert!(
-            transformed.contains("regular_function"),
+            code_output.contains("regular_function"),
             "Regular functions should remain"
         );
     }
@@ -486,7 +486,7 @@ mod edge_case_tests {
             message: long_message.clone(),
         };
 
-        let error_string = format!("{}", error);
+        let error_string = format!("{error}");
         assert!(error_string.contains(&long_message));
         assert!(error_string.len() > 10000);
     }
@@ -499,7 +499,7 @@ mod edge_case_tests {
             message: special_message.to_string(),
         };
 
-        let error_string = format!("{}", error);
+        let error_string = format!("{error}");
         assert!(error_string.contains("🦀"));
         assert!(error_string.contains("ñ"));
     }
@@ -557,7 +557,7 @@ mod error_propagation_tests {
             file_path: Some(PathBuf::from("/project/src/main.rs")),
         };
 
-        let error_string = format!("{}", parse_error);
+        let error_string = format!("{parse_error}");
         assert!(
             error_string.contains("Unexpected token"),
             "Should contain error message"
@@ -582,8 +582,8 @@ mod error_propagation_tests {
         ];
 
         for error in errors {
-            let debug_str = format!("{:?}", error);
-            let display_str = format!("{}", error);
+            let debug_str = format!("{error:?}");
+            let display_str = format!("{error}");
 
             assert!(!debug_str.is_empty(), "Debug string should not be empty");
             assert!(
@@ -600,7 +600,7 @@ mod transformer_internals_tests {
 
     #[test]
     fn test_transform_config_validation() {
-        let configs = vec![
+        let configs = [
             TransformConfig {
                 remove_tests: true,
                 remove_docs: true,
@@ -627,8 +627,7 @@ mod transformer_internals_tests {
             let cloned = config.clone();
             assert_eq!(
                 config.remove_tests, cloned.remove_tests,
-                "Config {} should clone correctly",
-                i
+                "Config {i} should clone correctly"
             );
         }
     }
@@ -637,7 +636,7 @@ mod transformer_internals_tests {
     fn test_transformer_creation_with_different_configs() {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
 
-        let configs = vec![
+        let configs = [
             TransformConfig::default(),
             TransformConfig {
                 remove_tests: false,
@@ -648,10 +647,9 @@ mod transformer_internals_tests {
             },
         ];
 
-        for (i, config) in configs.iter().enumerate() {
+        for config in &configs {
             let _transformer = CodeTransformer::new(temp_dir.path(), "test_crate", config.clone());
-            // Just test that creation succeeds
-            assert!(true, "Transformer {} should be created successfully", i);
+            // Just test that creation succeeds - Transformer should be created successfully
         }
     }
 }
@@ -717,8 +715,7 @@ mod file_manager_robustness_tests {
                 path_str.contains("src")
                     && path_str.contains("modules")
                     && path_str.contains("deep"),
-                "Path should contain expected components: {}",
-                path_str
+                "Path should contain expected components: {path_str}"
             );
         }
 
@@ -741,8 +738,7 @@ mod file_manager_robustness_tests {
                     && path_str.contains("modules")
                     && path_str.contains("deep")
                     && path_str.contains("inner_mod"),
-                "Path should contain expected components: {}",
-                path_str
+                "Path should contain expected components: {path_str}"
             );
         }
     }
@@ -866,7 +862,7 @@ mod performance_tests {
 
         for i in 0..1000 {
             let _error = BundlerError::ProjectStructure {
-                message: format!("Error {}", i),
+                message: format!("Error {i}"),
             };
         }
 
@@ -986,20 +982,15 @@ mod filesystem_edge_cases {
 
         for name in special_names {
             let file_path = temp_dir.path().join(name);
-            let content = format!("// File: {}\nfn test() {{}}", name);
+            let content = format!("// File: {name}\nfn test() {{}}");
             fs::write(&file_path, &content).expect("Failed to write special name file");
 
             let result = FileManager::read_file(&file_path);
-            assert!(
-                result.is_ok(),
-                "Should read file with special name: {}",
-                name
-            );
+            assert!(result.is_ok(), "Should read file with special name: {name}");
             assert_eq!(
                 result.unwrap(),
                 content,
-                "Content should match for file: {}",
-                name
+                "Content should match for file: {name}"
             );
         }
     }
@@ -1014,7 +1005,7 @@ mod filesystem_edge_cases {
         let depth = 10;
 
         for i in 0..depth {
-            current_path = current_path.join(format!("level_{}", i));
+            current_path = current_path.join(format!("level_{i}"));
             fs::create_dir_all(&current_path).expect("Failed to create deep directory");
 
             // Create both mod.rs and a sibling module
@@ -1033,7 +1024,7 @@ mod filesystem_edge_cases {
         // Test finding modules at various depths
         let mut test_path = base_path.join("src");
         for i in 0..depth - 1 {
-            test_path = test_path.join(format!("level_{}", i));
+            test_path = test_path.join(format!("level_{i}"));
             let result = FileManager::find_module_file(&test_path, &format!("level_{}", i + 1));
             assert!(result.is_ok(), "Should find module at depth {}", i + 1);
         }
@@ -1130,7 +1121,7 @@ edition = "2021"
         let lib_path = base_path.join("lib.rs");
         fs::write(
             &lib_path,
-            r#"
+            r"
 pub struct TestStruct {
     pub value: i32,
 }
@@ -1138,7 +1129,7 @@ pub struct TestStruct {
 pub fn test_function() -> i32 {
     42
 }
-"#,
+",
         )
         .expect("Failed to write lib.rs");
 
@@ -1163,21 +1154,21 @@ fn main() {
         assert!(result.is_ok(), "Transform should succeed");
 
         // Convert back to string to check the result
-        let transformed = prettyplease::unparse(&file);
+        let code_output = prettyplease::unparse(&file);
 
         // Both extern crate and use statements should be removed
         assert!(
-            !transformed.contains("extern crate test_lib"),
+            !code_output.contains("extern crate test_lib"),
             "Extern crate statement should be removed"
         );
         assert!(
-            !transformed.contains("use test_lib::*"),
+            !code_output.contains("use test_lib::*"),
             "Use statement should be removed"
         );
 
         // Library content should be included ONLY ONCE (no duplication)
-        let struct_count = transformed.matches("pub struct TestStruct").count();
-        let function_count = transformed.matches("pub fn test_function").count();
+        let struct_count = code_output.matches("pub struct TestStruct").count();
+        let function_count = code_output.matches("pub fn test_function").count();
 
         assert_eq!(struct_count, 1, "TestStruct should appear exactly once");
         assert_eq!(
@@ -1187,7 +1178,7 @@ fn main() {
 
         // Main function should still be present
         assert!(
-            transformed.contains("fn main"),
+            code_output.contains("fn main"),
             "Main function should remain"
         );
     }

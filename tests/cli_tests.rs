@@ -13,11 +13,10 @@ fn create_test_project(project_path: &Path, name: &str, content: &str) {
         format!(
             r#"
 [package]
-name = "{}"
+name = "{name}"
 version = "0.1.0"
 edition = "2021"
 "#,
-            name
         ),
     )
     .expect("Failed to write Cargo.toml");
