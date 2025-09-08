@@ -39,7 +39,7 @@ colored = "3.0"
 cargo_metadata = "0.22"
 prettyplease = "0.2"
 notify = "8.2"
-ctrlc = "3.0"
+ctrlc = "3.5"
 
 [dev-dependencies]
 tempfile = "3.21"
