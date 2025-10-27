@@ -45,7 +45,7 @@ ctrlc = "3.5"
 tempfile = "3.23"
 assert_cmd = "2.0"
 predicates = "3.0"
-proptest = "1.8"
+proptest = "1.9"
 syn = { version = "2.0", features = ["full", "parsing"] }
 
 [lints.clippy]
