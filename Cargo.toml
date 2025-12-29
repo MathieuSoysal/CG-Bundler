@@ -42,7 +42,7 @@ notify = "8.2"
 ctrlc = "3.5"
 
 [dev-dependencies]
-tempfile = "3.23"
+tempfile = "3.24"
 assert_cmd = "2.1"
 predicates = "3.0"
 proptest = "1.9"
