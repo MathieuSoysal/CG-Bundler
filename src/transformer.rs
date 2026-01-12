@@ -115,7 +115,7 @@ impl<'a> CodeTransformer<'a> {
         if self.config.remove_docs {
             for item in items.iter_mut() {
                 Self::remove_doc_attributes(item);
-                self.remove_doc_from_children(item);
+                Self::remove_doc_from_children(item);
             }
         }
     }
@@ -133,8 +133,7 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Remove documentation from child elements
-    #[allow(clippy::only_used_in_recursion)]
-    fn remove_doc_from_children(&self, item: &mut syn::Item) {
+    fn remove_doc_from_children(item: &mut syn::Item) {
         match item {
             syn::Item::Struct(item_struct) => {
                 Self::remove_docs_from_fields(&mut item_struct.fields);
@@ -162,7 +161,7 @@ impl<'a> CodeTransformer<'a> {
                 if let Some((_, ref mut mod_items)) = item_mod.content {
                     for mod_item in mod_items {
                         Self::remove_doc_attributes(mod_item);
-                        self.remove_doc_from_children(mod_item);
+                        Self::remove_doc_from_children(mod_item);
                     }
                 }
             }

@@ -1,4 +1,4 @@
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 use std::fs;
 use std::path::Path;
@@ -31,7 +31,7 @@ mod cli_functionality_tests {
 
     #[test]
     fn test_cli_version() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("--version")
             .assert()
@@ -41,7 +41,7 @@ mod cli_functionality_tests {
 
     #[test]
     fn test_cli_help() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("--help")
             .assert()
@@ -61,7 +61,7 @@ mod cli_functionality_tests {
             "fn main() { println!(\"Hello, world!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .assert()
@@ -82,7 +82,7 @@ mod cli_functionality_tests {
             "fn main() { println!(\"Hello, world!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--output")
@@ -115,7 +115,7 @@ mod cli_functionality_tests {
             "fn main() { println!(\"Hello, world!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--verbose")
@@ -135,7 +135,7 @@ mod cli_functionality_tests {
             "fn main() { println!(\"Hello, world!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--validate")
@@ -163,7 +163,7 @@ fn test_function() {
 "#,
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--keep-tests")
@@ -189,7 +189,7 @@ fn main() {
 "#,
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--keep-docs")
@@ -216,7 +216,7 @@ fn main() {
         )
         .expect("Failed to write utils.rs");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--no-expand-modules")
@@ -236,7 +236,7 @@ fn main() {
             "fn main() { \n    println!(\"Hello, world!\"); \n}",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--minify")
@@ -256,7 +256,7 @@ fn main() {
             "fn main() { \n    println!(\"Hello, world!\"); \n}",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--m2")
@@ -266,7 +266,7 @@ fn main() {
 
     #[test]
     fn test_cli_with_invalid_project_path() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir("/tmp") // Non-Rust project directory
             .assert()
@@ -285,7 +285,7 @@ fn main() {
             "fn main() { println!(\"Hello, world!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg(&project_path)
             .assert()
@@ -316,7 +316,7 @@ fn test_function() {
 "#,
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--verbose")
@@ -346,7 +346,7 @@ fn test_function() {
             "fn main() { invalid rust syntax !!!",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .assert()
@@ -395,7 +395,7 @@ fn main() {
         )
         .expect("Failed to write modules/utils.rs");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .assert()
@@ -406,7 +406,7 @@ fn main() {
 
     #[test]
     fn test_cli_help_contains_github_issues_link() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("--help")
             .assert()
@@ -421,7 +421,7 @@ fn main() {
 
     #[test]
     fn test_cli_error_contains_github_issues_link() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("/nonexistent/project/path")
             .assert()
@@ -447,7 +447,7 @@ fn main() {
             "fn main() { println!(\"Hello, world!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--info")
@@ -473,7 +473,7 @@ fn main() {
             "fn main() { println!(\"Hello, world!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--validate")
@@ -500,7 +500,7 @@ fn main() {
             "fn main() { println!(\"Hello, world!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--verbose")
@@ -516,7 +516,7 @@ fn main() {
 
     #[test]
     fn test_cli_short_help_does_not_contain_github_link() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test that short help (-h) doesn't show the detailed GitHub link
         cmd.arg("-h")
@@ -540,7 +540,7 @@ mod watch_mode_tests {
 
     #[test]
     fn test_cli_watch_flag_exists() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("--help")
             .assert()
@@ -551,7 +551,7 @@ mod watch_mode_tests {
 
     #[test]
     fn test_cli_watch_short_flag() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("--help")
             .assert()
@@ -561,7 +561,7 @@ mod watch_mode_tests {
 
     #[test]
     fn test_cli_src_dir_flag() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("--help")
             .assert()
@@ -572,7 +572,7 @@ mod watch_mode_tests {
 
     #[test]
     fn test_cli_debounce_flag() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("--help")
             .assert()
@@ -583,7 +583,7 @@ mod watch_mode_tests {
 
     #[test]
     fn test_watch_mode_with_invalid_project() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("--watch")
             .arg("nonexistent_project")
@@ -598,7 +598,7 @@ mod watch_mode_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "watch_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Use timeout to avoid hanging - watch mode will run indefinitely
         cmd.current_dir(temp_dir.path())
@@ -642,7 +642,7 @@ path = "custom_src/main.rs"
         )
         .expect("Failed to write main.rs");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test that watch mode accepts custom src dir
         cmd.current_dir(&project_path)
@@ -662,7 +662,7 @@ path = "custom_src/main.rs"
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "debounce_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test that watch mode accepts custom debounce
         cmd.current_dir(temp_dir.path())
@@ -691,7 +691,7 @@ mod advanced_cli_tests {
             "fn main() { println!(\"All flags!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(temp_dir.path())
             .arg("--verbose")
@@ -712,7 +712,7 @@ mod advanced_cli_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "info_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(temp_dir.path())
             .arg("--info")
@@ -734,7 +734,7 @@ mod advanced_cli_tests {
             "fn main() { println!(\"Valid!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(temp_dir.path())
             .arg("--validate")
@@ -748,7 +748,7 @@ mod advanced_cli_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "validate_verbose_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(temp_dir.path())
             .arg("--validate")
@@ -774,7 +774,7 @@ mod advanced_cli_tests {
             "fn main(){let x=5;println!(\"x is {}\",x);}",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(temp_dir.path())
             .arg("--pretty")
@@ -796,7 +796,7 @@ mod advanced_cli_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "invalid_combo_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test that minify and pretty can't be used together effectively
         // (both should work, but pretty should be ignored when minify is used)
@@ -821,7 +821,7 @@ mod advanced_cli_tests {
             "fn main() { println!(\"Hello\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(temp_dir.path())
             .assert()
@@ -840,7 +840,7 @@ mod advanced_cli_tests {
         fs::create_dir_all(&project_path).expect("Failed to create project directory");
         create_test_project(&project_path, project_name, "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         let output_path = temp_dir.path().join("bundled_output.rs");
 
@@ -863,7 +863,7 @@ mod advanced_cli_tests {
             "fn main() { let x = 5 + 3; println!(\"Result: {}\", x); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(temp_dir.path())
             .arg("--m2")
@@ -912,7 +912,7 @@ edition = "2021"
         )
         .expect("Failed to write utils.rs");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .arg("--no-expand-modules")
@@ -939,7 +939,7 @@ mod error_condition_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "invalid_debounce_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test with non-numeric debounce value
         cmd.current_dir(temp_dir.path())
@@ -957,7 +957,7 @@ mod error_condition_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "nonexistent_src_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(temp_dir.path())
             .arg("--watch")
@@ -974,7 +974,7 @@ mod error_condition_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "invalid_output_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Try to write to a directory that doesn't exist
         cmd.current_dir(temp_dir.path())
@@ -999,7 +999,7 @@ mod error_condition_tests {
         fs::write(project_path.join("src/main.rs"), "fn main() {}")
             .expect("Failed to write main.rs");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&project_path)
             .assert()
@@ -1013,7 +1013,7 @@ mod error_condition_tests {
         let empty_project = temp_dir.path().join("empty_project");
         fs::create_dir_all(&empty_project).expect("Failed to create empty project");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(&empty_project)
             .assert()
