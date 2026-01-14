@@ -1,4 +1,4 @@
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use cg_bundler::Bundler;
 use predicates::prelude::*;
 use std::fs;
@@ -533,7 +533,7 @@ mod cli_edge_cases {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "conflict_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test that conflicting flags work (last one wins or both apply)
         cmd.current_dir(temp_dir.path())
@@ -569,7 +569,7 @@ mod cli_edge_cases {
             "fn main() { println!(\"Deep!\"); }",
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg(&deep_path)
             .arg("--verbose")
@@ -603,7 +603,7 @@ edition = "2021"
         )
         .expect("Failed to write main.rs");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg(&project_path)
             .assert()
@@ -630,7 +630,7 @@ fn main() {
 "#,
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.current_dir(temp_dir.path())
             .assert()
@@ -647,7 +647,7 @@ mod watch_mode_edge_cases {
 
     #[test]
     fn test_watch_mode_help_flags() {
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Verify watch mode flags are documented properly
         cmd.arg("--help")
@@ -666,7 +666,7 @@ mod watch_mode_edge_cases {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "zero_debounce_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test with zero debounce (should be allowed)
         cmd.current_dir(temp_dir.path())
@@ -685,7 +685,7 @@ mod watch_mode_edge_cases {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         create_test_project(temp_dir.path(), "large_debounce_test", "fn main() {}");
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test with very large debounce value
         cmd.current_dir(temp_dir.path())
@@ -734,7 +734,7 @@ fn main() {
 "#,
         );
 
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test that competitive programming style code bundles correctly
         cmd.current_dir(temp_dir.path())
@@ -811,7 +811,7 @@ mod tests {
         );
 
         // Test bundling without tests (default)
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
         cmd.current_dir(&project_path)
             .arg("-o")
             .arg("no_tests.rs")
@@ -827,7 +827,7 @@ mod tests {
         );
 
         // Test bundling with tests
-        let mut cmd = Command::cargo_bin("cg-bundler").expect("Binary should exist");
+        let mut cmd = cargo_bin_cmd!("cg-bundler");
         cmd.current_dir(&project_path)
             .arg("--keep-tests")
             .arg("-o")
