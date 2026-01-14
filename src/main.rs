@@ -1,5 +1,7 @@
 use clap::Parser;
 use colored::Colorize;
+use regex::Regex;
+use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
 use std::process;
@@ -425,105 +427,99 @@ fn minify_code(code: &str) -> String {
 
 fn aggressive_minify_code(code: &str) -> String {
     // First apply basic minification
-    let mut result = minify_code(code);
+    let result_initial = minify_code(code);
 
     // Parse string literals to preserve them during aggressive minification
+
     let mut string_literals = Vec::new();
     let mut placeholder_index = 0;
 
     // Extract string literals and replace with placeholders
-    let mut chars = result.chars();
+    let mut chars = result_initial.chars().peekable();
     let mut output = String::new();
 
-    while let Some(ch) = chars.next() {
-        if ch == '"' {
-            // Start of string literal
-            let mut string_literal = String::from('"');
-            let mut escaped = false;
+    while let Some(char) = chars.next() {
+        // Start of string literal
+        match char {
+            '"' => {
+                let mut string_literal = String::from('"');
+                let mut escaped = false;
 
-            for str_ch in chars.by_ref() {
-                string_literal.push(str_ch);
-                if str_ch == '\\' && !escaped {
-                    escaped = true;
-                } else if str_ch == '"' && !escaped {
-                    break;
+                for inner_ch in chars.by_ref() {
+                    string_literal.push(inner_ch);
+                    if escaped {
+                        escaped = false;
+                    } else if inner_ch == '\\' {
+                        escaped = true;
+                    } else if inner_ch == '"' {
+                        break;
+                    }
+                }
+                // Store the string literal and use a placeholder
+                let _ = write!(output, "__STRING_LITERAL_{placeholder_index}__");
+                string_literals.push(string_literal);
+                placeholder_index += 1;
+            }
+            '\'' => {
+                let mut temp_buffer = String::from('\'');
+                let mut found_closing = false;
+                let mut escaped = false;
+
+                while let Some(&next_ch) = chars.peek() {
+                    if !escaped
+                        && (next_ch == ' '
+                            || next_ch == ';'
+                            || next_ch == '\n'
+                            || next_ch == '>'
+                            || next_ch == ','
+                            || next_ch == ')')
+                    {
+                        break;
+                    }
+
+                    temp_buffer.push(next_ch);
+                    chars.next();
+
+                    if escaped {
+                        escaped = false;
+                    } else if next_ch == '\\' {
+                        escaped = true;
+                    } else if next_ch == '\'' {
+                        found_closing = true;
+                        break;
+                    }
+                }
+
+                if found_closing {
+                    // Store the string literal and use a placeholder
+                    let _ = write!(output, "__STRING_LITERAL_{placeholder_index}__");
+                    string_literals.push(temp_buffer);
+                    placeholder_index += 1;
                 } else {
-                    escaped = false;
+                    output.push_str(&temp_buffer);
                 }
             }
 
-            // Store the string literal and use a placeholder
-            let placeholder = format!("__STRING_LITERAL_{placeholder_index}__");
-            string_literals.push(string_literal);
-            output.push_str(&placeholder);
-            placeholder_index += 1;
-        } else {
-            output.push(ch);
+            _ => {
+                output.push(char);
+            }
         }
     }
 
     // Apply aggressive replacements to the code without string literals
-    result = output
+    let re = Regex::new(r"\s*([=+*/%&|^<>,;:.()\[\]{}-])\s*").unwrap();
+    let mut result = re.replace_all(&output, "$1").to_string();
+    result = result
         // Remove spaces around operators and punctuation
-        .replace(" = ", "=")
-        .replace(" + ", "+")
-        .replace(" - ", "-")
-        .replace(" * ", "*")
-        .replace(" / ", "/")
-        .replace(" % ", "%")
-        .replace(" & ", "&")
-        .replace(" | ", "|")
-        .replace(" ^ ", "^")
-        .replace(" < ", "<")
-        .replace(" > ", ">")
-        .replace(" == ", "==")
-        .replace(" != ", "!=")
-        .replace(" <= ", "<=")
-        .replace(" >= ", ">=")
-        .replace(" && ", "&&")
-        .replace(" || ", "||")
-        .replace(" -> ", "->")
-        .replace(" => ", "=>")
-        // Remove spaces around punctuation
-        .replace(" , ", ",")
-        .replace(" ; ", ";")
-        .replace(" : ", ":")
-        .replace(" :: ", "::")
-        .replace(" . ", ".")
-        // Remove spaces around brackets and parentheses
-        .replace(" ( ", "(")
-        .replace(" ) ", ")")
-        .replace(" [ ", "[")
-        .replace(" ] ", "]")
-        .replace(" { ", "{")
-        .replace(" } ", "}")
-        // Remove spaces before punctuation
-        .replace(" ,", ",")
-        .replace(" ;", ";")
-        .replace(" :", ":")
-        .replace(" .", ".")
-        .replace(" (", "(")
-        .replace(" )", ")")
-        .replace(" [", "[")
-        .replace(" ]", "]")
-        .replace(" {", "{")
-        .replace(" }", "}")
-        // Remove spaces after punctuation
-        .replace(", ", ",")
-        .replace("; ", ";")
-        .replace("( ", "(")
-        .replace("[ ", "[")
-        .replace("{ ", "{");
+        .replace(",}", "}")
+        .replace(",)", ")")
+        .replace(",#", "#")
+        .replace(",]", "]");
 
     // Restore string literals
     for (i, string_literal) in string_literals.into_iter().enumerate() {
         let placeholder = format!("__STRING_LITERAL_{i}__");
         result = result.replace(&placeholder, &string_literal);
-    }
-
-    // Final cleanup: remove any remaining multiple spaces
-    while result.contains("  ") {
-        result = result.replace("  ", " ");
     }
 
     result
@@ -647,5 +643,42 @@ fn should_rebuild(event: &notify::Event) -> bool {
             })
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_aggressive_minify_code() {
+        let snippet = r#"
+trait Printable {
+    fn print(&self);
+}
+
+struct Person {
+    name: String,
+}
+
+impl Printable for Person {
+    fn print(&self) {
+        println!("Person: {}", self.name);
+    }
+}
+
+impl Person {
+    fn new(name: String) -> Self {
+        Person { name }
+    }
+}
+
+fn main() {
+    let person = Person::new("Alice".to_string());
+    person.print();
+}
+"#;
+        let minify_code = r#"trait Printable{fn print(&self);}struct Person{name:String}impl Printable for Person{fn print(&self){println!("Person: {}",self.name);}}impl Person{fn new(name:String)->Self{Person{name}}}fn main(){let person=Person::new("Alice".to_string());person.print();}"#;
+        assert_eq!(aggressive_minify_code(snippet), minify_code);
     }
 }
