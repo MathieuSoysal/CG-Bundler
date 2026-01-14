@@ -40,6 +40,7 @@ cargo_metadata = "0.23"
 prettyplease = "0.2"
 notify = "8.2"
 ctrlc = "3.5"
+regex = "1.12.2"
 
 [dev-dependencies]
 tempfile = "3.24"
