@@ -266,9 +266,11 @@ fn main() {
 
     #[test]
     fn test_cli_with_invalid_project_path() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+
         let mut cmd = cargo_bin_cmd!("cg-bundler");
 
-        cmd.current_dir("/tmp") // Non-Rust project directory
+        cmd.current_dir(temp_dir.path())
             .assert()
             .failure()
             .stderr(predicate::str::contains("Error:")); // Should show error message
