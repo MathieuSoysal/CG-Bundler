@@ -35,18 +35,18 @@ quote = "1.0"
 anyhow = "1.0"
 thiserror = "2.0"
 walkdir = "2.3"
-colored = "3.0"
+colored = "3.1"
 cargo_metadata = "0.23"
 prettyplease = "0.2"
 notify = "8.2"
 ctrlc = "3.5"
-regex = "1.12.2"
+regex = "1.12.3"
 
 [dev-dependencies]
 tempfile = "3.24"
 assert_cmd = "2.1"
 predicates = "3.0"
-proptest = "1.9"
+proptest = "1.10"
 syn = { version = "2.0", features = ["full", "parsing"] }
 
 [lints.clippy]
