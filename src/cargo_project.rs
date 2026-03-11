@@ -33,7 +33,8 @@ impl CargoProject {
 
         let root_package = Self::find_root_package(&metadata, &manifest_path)?;
         let (binary_target, library_target) = Self::analyze_targets(&root_package)?;
-        let normalized_crate_name = Self::determine_crate_name(library_target.as_ref(), &binary_target);
+        let normalized_crate_name =
+            Self::determine_crate_name(library_target.as_ref(), &binary_target);
         let base_path = Self::determine_base_path(library_target.as_ref(), &binary_target)?;
 
         Ok(Self {
@@ -166,8 +167,7 @@ impl CargoProject {
 
     /// Determine crate name used in Rust paths.
     fn determine_crate_name(library_target: Option<&Target>, binary_target: &Target) -> String {
-        let raw_name = library_target
-            .map_or(binary_target.name.as_str(), |lib| lib.name.as_str());
+        let raw_name = library_target.map_or(binary_target.name.as_str(), |lib| lib.name.as_str());
         Self::normalize_crate_identifier(raw_name)
     }
 
