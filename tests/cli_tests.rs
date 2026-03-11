@@ -603,7 +603,8 @@ mod watch_mode_tests {
         let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Use timeout to avoid hanging - watch mode will run indefinitely
-        cmd.current_dir(temp_dir.path())
+        let _ = cmd
+            .current_dir(temp_dir.path())
             .arg("--watch")
             .arg("-o")
             .arg("output.rs")
@@ -647,7 +648,8 @@ path = "custom_src/main.rs"
         let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test that watch mode accepts custom src dir
-        cmd.current_dir(&project_path)
+        let _ = cmd
+            .current_dir(&project_path)
             .arg("--watch")
             .arg("--src-dir")
             .arg("custom_src")
@@ -667,7 +669,8 @@ path = "custom_src/main.rs"
         let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test that watch mode accepts custom debounce
-        cmd.current_dir(temp_dir.path())
+        let _ = cmd
+            .current_dir(temp_dir.path())
             .arg("--watch")
             .arg("--debounce")
             .arg("1000")

@@ -2471,3 +2471,180 @@ fn main() {
     let parsed = syn::parse_file(&result);
     assert!(parsed.is_ok(), "Bundled code should be valid Rust syntax");
 }
+
+// ==============================================
+// WINTER-CHALLENGE-2026 INTEGRATION TESTS
+// These tests exercise the hyphenated-package-name fix: a project whose
+// Cargo.toml has `name = "Winter-Challenge-2026"` uses `winter_challenge_2026`
+// as the lib name (underscores), and the bundler must match it correctly.
+// ==============================================
+
+/// Bundling the Winter-Challenge-2026 project succeeds end-to-end.
+#[test]
+fn test_bundle_winter_challenge_2026_succeeds() {
+    let project_path = Path::new("Winter-Challenge-2026");
+    if !project_path.exists() {
+        return; // skip when running outside the workspace root
+    }
+
+    let result = bundle(project_path).expect("bundling Winter-Challenge-2026 should succeed");
+
+    assert!(!result.is_empty(), "bundled output should not be empty");
+    assert!(
+        result.contains("fn main"),
+        "bundled output should contain fn main"
+    );
+    // The crate-name use statement should have been removed
+    assert!(
+        !result.contains("use winter_challenge_2026"),
+        "crate use statement should be removed after expansion"
+    );
+    // Output should be syntactically valid Rust
+    syn::parse_file(&result).expect("bundled Winter-Challenge-2026 should be valid Rust");
+}
+
+/// After bundling, the lib.rs contents (including `pub mod game`) are inlined.
+#[test]
+fn test_bundle_winter_challenge_2026_lib_is_inlined() {
+    let project_path = Path::new("Winter-Challenge-2026");
+    if !project_path.exists() {
+        return;
+    }
+
+    let result = bundle(project_path).expect("bundle should succeed");
+
+    // lib.rs exposes choose_actions_output, parse_setup, parse_turn via pub use;
+    // after inlining those function definitions must be present.
+    assert!(
+        result.contains("choose_actions_output"),
+        "choose_actions_output from lib should be present"
+    );
+    assert!(
+        result.contains("parse_setup"),
+        "parse_setup function should be inlined"
+    );
+    assert!(
+        result.contains("parse_turn"),
+        "parse_turn function should be inlined"
+    );
+}
+
+/// After bundling, nested modules (game/model, game/strategy, …) are expanded.
+#[test]
+fn test_bundle_winter_challenge_2026_nested_modules_expanded() {
+    let project_path = Path::new("Winter-Challenge-2026");
+    if !project_path.exists() {
+        return;
+    }
+
+    let result = bundle(project_path).expect("bundle should succeed");
+
+    // Types defined in game/model.rs
+    assert!(
+        result.contains("struct Point"),
+        "Point struct from model should be expanded"
+    );
+    assert!(
+        result.contains("struct Setup"),
+        "Setup struct from model should be expanded"
+    );
+    assert!(
+        result.contains("struct Snakebot"),
+        "Snakebot struct from model should be expanded"
+    );
+    // strategy.rs defines choose_actions_output
+    assert!(
+        result.contains("choose_actions_output"),
+        "strategy function should be expanded"
+    );
+}
+
+/// With module expansion disabled the bundler does not inline lib.rs, so the
+/// output is essentially just main.rs (with crate-path prefixes stripped).
+#[test]
+fn test_bundle_winter_challenge_2026_no_expand_modules() {
+    let project_path = Path::new("Winter-Challenge-2026");
+    if !project_path.exists() {
+        return;
+    }
+
+    let bundler = Bundler::with_config(TransformConfig {
+        expand_modules: false,
+        ..TransformConfig::default()
+    });
+    let result = bundler
+        .bundle(project_path)
+        .expect("bundle with no expansion should succeed");
+
+    assert!(!result.is_empty(), "result should not be empty");
+    assert!(
+        result.contains("fn main"),
+        "main function should be present"
+    );
+    // With expansion disabled, lib.rs is never loaded, so game-layer types
+    // must NOT appear in the output.
+    assert!(
+        !result.contains("struct Snakebot"),
+        "lib struct Snakebot should not be present when expansion is disabled"
+    );
+    assert!(
+        !result.contains("struct Point"),
+        "lib struct Point should not be present when expansion is disabled"
+    );
+}
+
+/// CargoProject normalises the hyphenated lib name to a valid Rust identifier.
+#[test]
+fn test_cargo_project_hyphenated_name_normalised() {
+    let project_path = Path::new("Winter-Challenge-2026");
+    if !project_path.exists() {
+        return;
+    }
+
+    let project = CargoProject::new(project_path)
+        .expect("CargoProject::new should succeed for Winter-Challenge-2026");
+
+    // The lib target keeps underscores (Cargo normalises dashes → underscores for lib names).
+    assert_eq!(
+        project.crate_name(),
+        "winter_challenge_2026",
+        "crate_name() must use underscores so it matches Rust import paths"
+    );
+    // The binary target name follows the package name (with dashes).
+    assert_eq!(
+        project.binary_target().name,
+        "winter-challenge-2026",
+        "binary target name should match Cargo.toml"
+    );
+}
+
+/// A binary-only project whose package name contains dashes has its crate
+/// identifier normalised to underscores.
+#[test]
+fn test_cargo_project_binary_only_hyphenated_name_normalised() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let project_path = temp_dir.path().join("hyphen-proj");
+    std::fs::create_dir_all(project_path.join("src")).unwrap();
+
+    std::fs::write(
+        project_path.join("Cargo.toml"),
+        r#"[package]
+name = "hyphen-proj"
+version = "0.1.0"
+edition = "2021"
+"#,
+    )
+    .unwrap();
+    std::fs::write(project_path.join("src/main.rs"), "fn main() {}\n").unwrap();
+
+    let project = CargoProject::new(&project_path)
+        .expect("CargoProject::new should succeed for a hyphenated binary-only project");
+
+    assert_eq!(
+        project.crate_name(),
+        "hyphen_proj",
+        "crate_name() should replace dashes with underscores"
+    );
+    assert_eq!(project.binary_target().name, "hyphen-proj");
+    assert!(project.library_target().is_none());
+}

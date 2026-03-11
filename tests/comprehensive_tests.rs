@@ -669,7 +669,8 @@ mod watch_mode_edge_cases {
         let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test with zero debounce (should be allowed)
-        cmd.current_dir(temp_dir.path())
+        let _ = cmd
+            .current_dir(temp_dir.path())
             .arg("--watch")
             .arg("--debounce")
             .arg("0")
@@ -688,7 +689,8 @@ mod watch_mode_edge_cases {
         let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         // Test with very large debounce value
-        cmd.current_dir(temp_dir.path())
+        let _ = cmd
+            .current_dir(temp_dir.path())
             .arg("--watch")
             .arg("--debounce")
             .arg("999999")
