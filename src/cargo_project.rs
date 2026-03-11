@@ -10,6 +10,7 @@ pub struct CargoProject {
     root_package: Package,
     binary_target: Target,
     library_target: Option<Target>,
+    normalized_crate_name: String,
     base_path: PathBuf,
 }
 
@@ -32,6 +33,8 @@ impl CargoProject {
 
         let root_package = Self::find_root_package(&metadata, &manifest_path)?;
         let (binary_target, library_target) = Self::analyze_targets(&root_package)?;
+        let normalized_crate_name =
+            Self::determine_crate_name(library_target.as_ref(), &binary_target);
         let base_path = Self::determine_base_path(library_target.as_ref(), &binary_target)?;
 
         Ok(Self {
@@ -39,6 +42,7 @@ impl CargoProject {
             root_package,
             binary_target,
             library_target,
+            normalized_crate_name,
             base_path,
         })
     }
@@ -71,9 +75,7 @@ impl CargoProject {
     /// Get the crate name (prefer library name over binary name)
     #[must_use]
     pub fn crate_name(&self) -> &str {
-        self.library_target
-            .as_ref()
-            .map_or(&self.binary_target.name, |lib| lib.name.as_str())
+        &self.normalized_crate_name
     }
 
     /// Get the binary source path
@@ -161,6 +163,17 @@ impl CargoProject {
             .ok_or_else(|| BundlerError::ProjectStructure {
                 message: "Source path has no parent directory".to_string(),
             })
+    }
+
+    /// Determine crate name used in Rust paths.
+    fn determine_crate_name(library_target: Option<&Target>, binary_target: &Target) -> String {
+        let raw_name = library_target.map_or(binary_target.name.as_str(), |lib| lib.name.as_str());
+        Self::normalize_crate_identifier(raw_name)
+    }
+
+    /// Normalize Cargo target names to valid Rust crate identifiers.
+    fn normalize_crate_identifier(name: &str) -> String {
+        name.replace('-', "_")
     }
 
     /// Check if a target has a specific kind
@@ -428,6 +441,31 @@ path = "src/main.rs"
         assert_eq!(project.binary_target().name, "my_custom_binary");
         assert_eq!(project.crate_name(), "my_custom_binary");
         assert!(project.library_target().is_none());
+    }
+
+    #[test]
+    fn test_project_with_hyphenated_name_normalizes_crate_identifier() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_path = temp_dir.path().join("hyphenated_name_project");
+        fs::create_dir_all(&project_path).unwrap();
+
+        let cargo_toml = r#"
+[package]
+name = "winter-challenge-2026"
+version = "0.1.0"
+edition = "2021"
+"#;
+
+        fs::write(project_path.join("Cargo.toml"), cargo_toml).unwrap();
+
+        let src_dir = project_path.join("src");
+        fs::create_dir(&src_dir).unwrap();
+        fs::write(src_dir.join("main.rs"), "fn main() {}\n").unwrap();
+
+        let project = CargoProject::new(&project_path).unwrap();
+
+        assert_eq!(project.binary_target().name, "winter-challenge-2026");
+        assert_eq!(project.crate_name(), "winter_challenge_2026");
     }
 
     #[test]
