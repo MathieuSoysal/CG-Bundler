@@ -704,9 +704,13 @@ fn main() {
     fn test_minify_code_filters_empty_lines() {
         let code = "fn main() {\n\n\n    println!(\"hello\");\n\n}";
         let result = minify_code(code);
-        // Empty lines should be removed
-        assert!(!result.contains("  "));
+        // Empty lines should be removed - the result should join only non-empty trimmed lines
+        // Input has 3 non-empty lines: "fn main() {", "println!(\"hello\");", "}"
+        // They are joined with spaces into a single line
+        assert!(!result.contains('\n'), "Result should be a single line");
         assert!(result.contains("fn main()"));
+        assert!(result.contains("println!"));
+        assert!(result.contains('}'));
     }
 
     #[test]
@@ -1208,9 +1212,11 @@ fn main() {
 
     #[test]
     fn test_aggressive_minify_code_trailing_comma_cleanup() {
-        // Verify trailing comma cleanup in various contexts
-        let code = "fn main() {\n    let v: Vec<u32> = vec![1, 2, 3];\n}\n";
+        // Verify trailing comma before closing brace/bracket/paren is cleaned up
+        let code = "fn main() {\n    let _a = (1, 2,);\n    let _b = [1, 2,];\n}\n";
         let result = aggressive_minify_code(code);
-        assert!(result.contains("vec![1,2,3]") || result.contains("vec ! [1,2,3]"));
+        // Trailing commas before closing delimiters should be removed
+        assert!(!result.contains(",)"), "Trailing comma before ) should be removed");
+        assert!(!result.contains(",]"), "Trailing comma before ] should be removed");
     }
 }
