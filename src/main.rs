@@ -681,4 +681,536 @@ fn main() {
         let minify_code = r#"trait Printable{fn print(&self);}struct Person{name:String}impl Printable for Person{fn print(&self){println!("Person: {}",self.name);}}impl Person{fn new(name:String)->Self{Person{name}}}fn main(){let person=Person::new("Alice".to_string());person.print();}"#;
         assert_eq!(aggressive_minify_code(snippet), minify_code);
     }
+
+    #[test]
+    fn test_minify_code_removes_empty_lines() {
+        let code = "fn main() {\n    println!(\"hello\");\n}\n";
+        let result = minify_code(code);
+        assert!(!result.contains('\n'));
+        assert!(result.contains("fn main()"));
+        assert!(result.contains("println!"));
+    }
+
+    #[test]
+    fn test_minify_code_trims_whitespace() {
+        let code = "   fn main() {   \n   let x = 5;   \n}   ";
+        let result = minify_code(code);
+        // All lines should be trimmed and joined with spaces
+        assert!(!result.starts_with(' '));
+        assert!(!result.ends_with(' '));
+    }
+
+    #[test]
+    fn test_minify_code_filters_empty_lines() {
+        let code = "fn main() {\n\n\n    println!(\"hello\");\n\n}";
+        let result = minify_code(code);
+        // Empty lines should be removed
+        assert!(!result.contains("  "));
+        assert!(result.contains("fn main()"));
+    }
+
+    #[test]
+    fn test_minify_code_empty_input() {
+        let result = minify_code("");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_minify_code_single_line() {
+        let code = "fn main() { println!(\"hello\"); }";
+        let result = minify_code(code);
+        assert_eq!(result, "fn main() { println!(\"hello\"); }");
+    }
+
+    #[test]
+    fn test_aggressive_minify_preserves_string_literals() {
+        let code = "fn main() {\n    let s = \"hello world\";\n    println!(\"{}\", s);\n}\n";
+        let result = aggressive_minify_code(code);
+        assert!(result.contains("\"hello world\""));
+        assert!(result.contains("\"{}\""));
+    }
+
+    #[test]
+    fn test_aggressive_minify_preserves_char_literals() {
+        let code = "fn main() {\n    let c = 'a';\n    println!(\"{}\", c);\n}\n";
+        let result = aggressive_minify_code(code);
+        assert!(result.contains("'a'"));
+    }
+
+    #[test]
+    fn test_aggressive_minify_empty_input() {
+        let result = aggressive_minify_code("");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_cli_get_project_path_default() {
+        let cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        assert_eq!(cli.get_project_path(), PathBuf::from("."));
+    }
+
+    #[test]
+    fn test_cli_get_project_path_custom() {
+        let cli = Cli {
+            project_path: Some(PathBuf::from("/my/project")),
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        assert_eq!(cli.get_project_path(), PathBuf::from("/my/project"));
+    }
+
+    #[test]
+    fn test_cli_is_verbose() {
+        let mut cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        assert!(!cli.is_verbose());
+        cli.verbose = true;
+        assert!(cli.is_verbose());
+    }
+
+    #[test]
+    fn test_cli_get_output_none() {
+        let cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        assert!(cli.get_output().is_none());
+    }
+
+    #[test]
+    fn test_cli_get_output_some() {
+        let output_path = PathBuf::from("/output.rs");
+        let cli = Cli {
+            project_path: None,
+            output: Some(output_path.clone()),
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        assert_eq!(cli.get_output(), Some(&output_path));
+    }
+
+    #[test]
+    fn test_cli_is_pretty() {
+        let mut cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        assert!(!cli.is_pretty());
+        cli.pretty = true;
+        assert!(cli.is_pretty());
+    }
+
+    #[test]
+    fn test_cli_is_minify() {
+        let mut cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        assert!(!cli.is_minify());
+        cli.minify = true;
+        assert!(cli.is_minify());
+    }
+
+    #[test]
+    fn test_cli_is_minify_via_m2() {
+        let cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: true,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        // m2 implies minify
+        assert!(cli.is_minify());
+    }
+
+    #[test]
+    fn test_cli_is_aggressive_minify() {
+        let mut cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        assert!(!cli.is_aggressive_minify());
+        cli.m2 = true;
+        assert!(cli.is_aggressive_minify());
+    }
+
+    #[test]
+    fn test_cli_get_transform_config_defaults() {
+        let cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        let config = cli.get_transform_config();
+        // By default: remove_tests = !keep_tests = true, remove_docs = !keep_docs = true
+        assert!(config.remove_tests);
+        assert!(config.remove_docs);
+        assert!(config.expand_modules);
+        assert!(!config.minify);
+        assert!(!config.aggressive_minify);
+    }
+
+    #[test]
+    fn test_cli_get_transform_config_with_keep_tests() {
+        let cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: true,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        let config = cli.get_transform_config();
+        assert!(!config.remove_tests);
+        assert!(config.remove_docs);
+    }
+
+    #[test]
+    fn test_cli_get_transform_config_with_keep_docs() {
+        let cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: true,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        let config = cli.get_transform_config();
+        assert!(config.remove_tests);
+        assert!(!config.remove_docs);
+    }
+
+    #[test]
+    fn test_cli_get_transform_config_with_no_expand_modules() {
+        let cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: true,
+            pretty: false,
+            minify: false,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        let config = cli.get_transform_config();
+        assert!(!config.expand_modules);
+    }
+
+    #[test]
+    fn test_cli_get_transform_config_with_minify() {
+        let cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: true,
+            m2: false,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        let config = cli.get_transform_config();
+        assert!(config.minify);
+        assert!(!config.aggressive_minify);
+    }
+
+    #[test]
+    fn test_cli_get_transform_config_with_m2() {
+        let cli = Cli {
+            project_path: None,
+            output: None,
+            keep_tests: false,
+            keep_docs: false,
+            no_expand_modules: false,
+            pretty: false,
+            minify: false,
+            m2: true,
+            verbose: false,
+            validate: false,
+            info: false,
+            watch: false,
+            src_dir: "src".to_string(),
+            debounce: 500,
+        };
+        let config = cli.get_transform_config();
+        assert!(config.minify);
+        assert!(config.aggressive_minify);
+    }
+
+    #[test]
+    fn test_should_rebuild_create_rs_file() {
+        use notify::{Event, EventKind};
+        use notify::event::CreateKind;
+
+        let event = Event::new(EventKind::Create(CreateKind::File))
+            .add_path(PathBuf::from("/some/path/main.rs"));
+        assert!(should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_modify_rs_file() {
+        use notify::{Event, EventKind};
+        use notify::event::{DataChange, ModifyKind};
+
+        let event = Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content)))
+            .add_path(PathBuf::from("/some/path/lib.rs"));
+        assert!(should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_remove_rs_file() {
+        use notify::{Event, EventKind};
+        use notify::event::RemoveKind;
+
+        let event = Event::new(EventKind::Remove(RemoveKind::File))
+            .add_path(PathBuf::from("/some/path/module.rs"));
+        assert!(should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_non_rs_file() {
+        use notify::{Event, EventKind};
+        use notify::event::ModifyKind;
+
+        let event = Event::new(EventKind::Modify(ModifyKind::Any))
+            .add_path(PathBuf::from("/some/path/Cargo.toml"));
+        assert!(!should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_access_event() {
+        use notify::{Event, EventKind};
+        use notify::event::AccessKind;
+
+        let event = Event::new(EventKind::Access(AccessKind::Read))
+            .add_path(PathBuf::from("/some/path/main.rs"));
+        assert!(!should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_other_event() {
+        use notify::{Event, EventKind};
+
+        let event =
+            Event::new(EventKind::Other).add_path(PathBuf::from("/some/path/main.rs"));
+        assert!(!should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_any_event() {
+        use notify::{Event, EventKind};
+
+        let event =
+            Event::new(EventKind::Any).add_path(PathBuf::from("/some/path/main.rs"));
+        assert!(!should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_no_paths() {
+        use notify::{Event, EventKind};
+        use notify::event::ModifyKind;
+
+        let event = Event::new(EventKind::Modify(ModifyKind::Any));
+        assert!(!should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_non_rs_extension() {
+        use notify::{Event, EventKind};
+        use notify::event::CreateKind;
+
+        let event = Event::new(EventKind::Create(CreateKind::File))
+            .add_path(PathBuf::from("/some/path/file.txt"));
+        assert!(!should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_display_bug_report_info_does_not_panic() {
+        // Just ensure the function runs without panicking
+        display_bug_report_info();
+    }
+
+    #[test]
+    fn test_format_with_rustfmt_valid_code() {
+        let code = "fn main(){println!(\"hello\");}";
+        // format_with_rustfmt may return None if rustfmt is not available
+        // but should not panic
+        let _result = format_with_rustfmt(code, false);
+    }
+
+    #[test]
+    fn test_format_with_rustfmt_invalid_code() {
+        let code = "this is not valid rust code !!!";
+        // Should return None for invalid code without panicking
+        let result = format_with_rustfmt(code, false);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_aggressive_minify_code_with_escaped_quotes() {
+        let code = "fn main() {\n    let s = \"he said \\\"hello\\\"\";\n}\n";
+        let result = aggressive_minify_code(code);
+        assert!(result.contains("\"he said \\\"hello\\\"\""));
+    }
+
+    #[test]
+    fn test_aggressive_minify_code_with_lifetime() {
+        let code = "fn foo<'a>(x: &'a str) -> &'a str {\n    x\n}\n";
+        let result = aggressive_minify_code(code);
+        assert!(result.contains("'a"));
+    }
+
+    #[test]
+    fn test_aggressive_minify_code_trailing_comma_cleanup() {
+        // Verify trailing comma cleanup in various contexts
+        let code = "fn main() {\n    let v: Vec<u32> = vec![1, 2, 3];\n}\n";
+        let result = aggressive_minify_code(code);
+        assert!(result.contains("vec![1,2,3]") || result.contains("vec ! [1,2,3]"));
+    }
 }
