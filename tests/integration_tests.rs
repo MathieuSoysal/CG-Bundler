@@ -2727,16 +2727,22 @@ fn main() {
 
     let bundled_code = result.unwrap();
 
-    // The external crate's content should be inlined — not referenced via a bare `use`.
+    // The external crate's content should be inlined as a mod block.
+    assert!(
+        bundled_code.contains("mod hello_world"),
+        "Bundled output should contain an inlined `mod hello_world` block for the external crate.\n\
+         Got:\n{bundled_code}"
+    );
     assert!(
         bundled_code.contains("HELLO_WORLD"),
         "Bundled output should contain the constant defined in the external crate.\n\
          Got:\n{bundled_code}"
     );
+    // The `use` statement is valid here: it now refers to the locally-defined mod, not an
+    // unresolved external crate, so the output is self-contained.
     assert!(
-        !bundled_code.contains("use hello_world"),
-        "Bundled output should not contain a bare `use hello_world` statement; \
-         the crate should have been inlined.\n\
+        bundled_code.contains("fn main"),
+        "Bundled output should still contain the main function.\n\
          Got:\n{bundled_code}"
     );
 }

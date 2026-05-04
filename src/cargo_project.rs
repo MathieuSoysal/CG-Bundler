@@ -1,4 +1,5 @@
 use cargo_metadata::{Metadata, Package, Target};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::{BundlerError, Result};
@@ -190,6 +191,44 @@ impl CargoProject {
     #[must_use]
     pub const fn metadata(&self) -> &Metadata {
         &self.metadata
+    }
+
+    /// Return a map from each direct dependency's Rust crate name to the `PathBuf`
+    /// of its library entry point (`lib.rs` or equivalent).
+    ///
+    /// Only dependencies that expose a library target are included.
+    /// The root package itself is excluded.
+    #[must_use]
+    pub fn external_lib_paths(&self) -> HashMap<String, PathBuf> {
+        let mut map = HashMap::new();
+
+        for dep in &self.root_package.dependencies {
+            // Rename takes precedence over the package name as the in-code crate identifier.
+            let crate_name = dep.rename.as_deref().map_or_else(
+                || Self::normalize_crate_identifier(&dep.name),
+                Self::normalize_crate_identifier,
+            );
+
+            // Locate the resolved package for this dependency.
+            let Some(pkg) = self.metadata.packages.iter().find(|p| {
+                Self::normalize_crate_identifier(&p.name)
+                    == Self::normalize_crate_identifier(&dep.name)
+            }) else {
+                continue;
+            };
+
+            // Skip the root package (the project being bundled).
+            if pkg.id == self.root_package.id {
+                continue;
+            }
+
+            // Only inline deps that actually provide a library target.
+            if let Some(lib_target) = pkg.targets.iter().find(|t| Self::target_is(t, "lib")) {
+                map.insert(crate_name, lib_target.src_path.clone().into_std_path_buf());
+            }
+        }
+
+        map
     }
 }
 

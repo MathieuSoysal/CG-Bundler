@@ -1,5 +1,6 @@
+use std::collections::HashMap;
 use std::mem;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use syn::punctuated::Punctuated;
 use syn::visit_mut::VisitMut;
 
@@ -34,16 +35,35 @@ pub struct CodeTransformer<'a> {
     base_path: &'a Path,
     crate_name: &'a str,
     config: TransformConfig,
+    /// Mapping from external dependency crate names to their library entry-point paths.
+    external_libs: HashMap<String, PathBuf>,
 }
 
 impl<'a> CodeTransformer<'a> {
-    /// Create a new code transformer
+    /// Create a new code transformer with no external library knowledge.
     #[must_use]
-    pub const fn new(base_path: &'a Path, crate_name: &'a str, config: TransformConfig) -> Self {
+    pub fn new(base_path: &'a Path, crate_name: &'a str, config: TransformConfig) -> Self {
         Self {
             base_path,
             crate_name,
             config,
+            external_libs: HashMap::new(),
+        }
+    }
+
+    /// Create a new code transformer that can also inline external crate dependencies.
+    #[must_use]
+    pub const fn with_external_libs(
+        base_path: &'a Path,
+        crate_name: &'a str,
+        config: TransformConfig,
+        external_libs: HashMap<String, PathBuf>,
+    ) -> Self {
+        Self {
+            base_path,
+            crate_name,
+            config,
+            external_libs,
         }
     }
 
@@ -89,9 +109,84 @@ impl<'a> CodeTransformer<'a> {
             }
         }
 
+        // Expand direct external dependencies into inline `mod` blocks.
+        self.expand_external_libs(items)?;
+
         if self.config.remove_tests || self.config.remove_docs {
             self.filter_tests_and_docs(items);
         }
+
+        Ok(())
+    }
+
+    /// Wrap each referenced external dependency's source into a `mod <name> { ... }` block
+    /// inserted at the head of `items`, leaving the original `use` statements in place so
+    /// they now resolve against the newly created module.
+    fn expand_external_libs(&self, items: &mut Vec<syn::Item>) -> Result<()> {
+        // Collect the names we actually need to expand to avoid borrowing issues.
+        let to_expand: Vec<(String, PathBuf)> = self
+            .external_libs
+            .iter()
+            .filter(|(name, _)| items.iter().any(|item| Self::is_use_path(item, name)))
+            .map(|(name, path)| (name.clone(), path.clone()))
+            .collect();
+
+        for (ext_name, ext_lib_path) in to_expand {
+            self.expand_external_lib(items, &ext_name, &ext_lib_path)?;
+        }
+
+        Ok(())
+    }
+
+    /// Inline a single external crate's library as a `mod <name> { ... }` block.
+    fn expand_external_lib(
+        &self,
+        items: &mut Vec<syn::Item>,
+        ext_name: &str,
+        ext_lib_path: &Path,
+    ) -> Result<()> {
+        let code =
+            FileManager::read_file(ext_lib_path).map_err(|e| BundlerError::ProjectStructure {
+                message: format!(
+                    "Failed to read external crate '{ext_name}' from '{}': {e}",
+                    ext_lib_path.display()
+                ),
+            })?;
+
+        let mut lib_file = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
+            message: format!("Failed to parse external crate '{ext_name}': {e}"),
+            file_path: Some(ext_lib_path.to_path_buf()),
+        })?;
+
+        let ext_base_path =
+            ext_lib_path
+                .parent()
+                .ok_or_else(|| BundlerError::ProjectStructure {
+                    message: format!(
+                        "External crate '{ext_name}' lib path has no parent directory"
+                    ),
+                })?;
+
+        // Recursively expand the external crate's own modules (submodules, etc.).
+        // We do NOT pass external_libs here to avoid unbounded recursive inlining.
+        let mut expander = CodeTransformer::new(ext_base_path, ext_name, self.config.clone());
+        expander.expand_items(&mut lib_file.items)?;
+        for item in &mut lib_file.items {
+            expander.visit_item_mut(item);
+        }
+
+        // Build `mod <ext_name> { <lib contents> }` and prepend it to items.
+        let mod_item = syn::Item::Mod(syn::ItemMod {
+            attrs: vec![],
+            vis: syn::Visibility::Inherited,
+            unsafety: None,
+            mod_token: syn::token::Mod::default(),
+            ident: syn::Ident::new(ext_name, proc_macro2::Span::call_site()),
+            content: Some((syn::token::Brace::default(), lib_file.items)),
+            semi: None,
+        });
+
+        items.insert(0, mod_item);
 
         Ok(())
     }
