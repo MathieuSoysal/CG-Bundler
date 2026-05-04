@@ -2648,3 +2648,95 @@ edition = "2021"
     assert_eq!(project.binary_target().name, "hyphen-proj");
     assert!(project.library_target().is_none());
 }
+
+/// Regression test for: https://github.com/MathieuSoysal/CG-Bundler/issues/49
+///
+/// External crates (dependencies from crates.io) should be expanded and inlined
+/// into the bundled output, not left as bare `use` statements.
+///
+/// This test uses a path dependency to simulate an external crate without
+/// requiring network access. The bundler should expand the dependency's source
+/// into the output, wrapping it in the appropriate `mod` block.
+#[test]
+fn test_issue_49_external_crate_is_bundled() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+
+    // Create a simple external "crate" via a path dependency to simulate a crates.io dep.
+    let ext_crate_path = temp_dir.path().join("hello_world");
+    fs::create_dir_all(ext_crate_path.join("src")).expect("Failed to create ext crate src dir");
+
+    fs::write(
+        ext_crate_path.join("Cargo.toml"),
+        r#"[package]
+name = "hello-world"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hello_world"
+path = "src/lib.rs"
+"#,
+    )
+    .expect("Failed to write external crate Cargo.toml");
+
+    fs::write(
+        ext_crate_path.join("src/lib.rs"),
+        r#"pub const HELLO_WORLD: &str = "Hello world!";"#,
+    )
+    .expect("Failed to write external crate lib.rs");
+
+    // Create the main project that uses the external crate.
+    let project_path = temp_dir.path().join("test_bundler");
+    fs::create_dir_all(project_path.join("src")).expect("Failed to create project src dir");
+
+    fs::write(
+        project_path.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "test-bundler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hello-world = {{ path = "{}" }}
+"#,
+            ext_crate_path.display()
+        ),
+    )
+    .expect("Failed to write project Cargo.toml");
+
+    fs::write(
+        project_path.join("src/main.rs"),
+        r#"use hello_world::HELLO_WORLD;
+
+fn main() {
+    println!("{HELLO_WORLD}");
+}
+"#,
+    )
+    .expect("Failed to write main.rs");
+
+    let bundler = Bundler::new();
+    let result = bundler.bundle(&project_path);
+
+    assert!(
+        result.is_ok(),
+        "Bundler should not fail on external crate dependencies: {:?}",
+        result.err()
+    );
+
+    let bundled_code = result.unwrap();
+
+    // The external crate's content should be inlined — not referenced via a bare `use`.
+    assert!(
+        bundled_code.contains("HELLO_WORLD"),
+        "Bundled output should contain the constant defined in the external crate.\n\
+         Got:\n{bundled_code}"
+    );
+    assert!(
+        !bundled_code.contains("use hello_world"),
+        "Bundled output should not contain a bare `use hello_world` statement; \
+         the crate should have been inlined.\n\
+         Got:\n{bundled_code}"
+    );
+}
