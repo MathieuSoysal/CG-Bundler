@@ -52,10 +52,11 @@ impl Bundler {
             file_path: Some(binary_source_path.to_path_buf()),
         })?;
 
-        let mut transformer = CodeTransformer::new(
+        let mut transformer = CodeTransformer::with_external_libs(
             project.base_path(),
             project.crate_name(),
             self.config.clone(),
+            project.external_lib_paths(),
         );
 
         transformer.transform_file(&mut file)?;
