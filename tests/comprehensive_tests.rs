@@ -1,6 +1,7 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use cg_bundler::Bundler;
 use predicates::prelude::*;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
@@ -19,19 +20,18 @@ fn create_test_project_with_lib(
         format!(
             r#"
 [package]
-name = "{}"
+name = "{name}"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "{}"
+name = "{name}"
 path = "src/lib.rs"
 
 [[bin]]
-name = "{}"
+name = "{name}"
 path = "src/main.rs"
-"#,
-            name, name, name
+"#
         ),
     )
     .expect("Failed to write Cargo.toml");
@@ -48,11 +48,10 @@ fn create_test_project(project_path: &Path, name: &str, content: &str) {
         format!(
             r#"
 [package]
-name = "{}"
+name = "{name}"
 version = "0.1.0"
 edition = "2021"
-"#,
-            name
+"#
         ),
     )
     .expect("Failed to write Cargo.toml");
@@ -383,7 +382,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             bundled_code.contains("Box<dyn std::error::Error>"),
             "Should preserve error trait objects"
         );
-        assert!(bundled_code.contains("?"), "Should preserve try operator");
+        assert!(bundled_code.contains('?'), "Should preserve try operator");
     }
 }
 
@@ -401,12 +400,12 @@ mod performance_tests {
 
         let mut main_content = String::from("fn main() {\n");
         for i in 0..20 {
-            main_content.push_str(&format!("    module{i}::function{i}();\n"));
+            writeln!(main_content, "    module{i}::function{i}();").expect("write failed");
         }
         main_content.push_str("}\n\n");
 
         for i in 0..20 {
-            main_content.push_str(&format!("mod module{i};\n"));
+            writeln!(main_content, "mod module{i};").expect("write failed");
         }
 
         fs::write(project_path.join("src/main.rs"), main_content).expect("Failed to write main.rs");
@@ -416,10 +415,10 @@ mod performance_tests {
             let module_content =
                 format!("pub fn function{i}() {{\n    println!(\"Function {i} called\");\n}}\n");
             fs::write(
-                project_path.join(&format!("src/module{i}.rs")),
+                project_path.join(format!("src/module{i}.rs")),
                 module_content,
             )
-            .expect(&format!("Failed to write module{i}.rs"));
+            .unwrap_or_else(|_| panic!("Failed to write module{i}.rs"));
         }
 
         fs::write(
@@ -454,8 +453,7 @@ edition = "2021"
         for i in 0..20 {
             assert!(
                 bundled_code.contains(&format!("function{i}")),
-                "Should contain function{}",
-                i
+                "Should contain function{i}"
             );
         }
     }
@@ -776,7 +774,7 @@ fn main() {
     println!("Result: {}", calc.add(2, 3));
 }
 "#,
-            r#"
+            r"
 pub struct Calculator;
 
 impl Calculator {
@@ -809,7 +807,7 @@ mod tests {
         assert_eq!(calc.multiply(2, 3), 6);
     }
 }
-"#,
+",
         );
 
         // Test bundling without tests (default)
@@ -842,7 +840,7 @@ mod tests {
 
         // Print the actual content for debugging
         if !with_tests.contains("#[test]") {
-            println!("Bundled content with tests:\n{}", with_tests);
+            println!("Bundled content with tests:\n{with_tests}");
         }
 
         assert!(
