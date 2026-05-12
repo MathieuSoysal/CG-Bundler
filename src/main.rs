@@ -3,8 +3,10 @@ use colored::Colorize;
 use regex::Regex;
 use std::fmt::Write;
 use std::fs;
+use std::iter::Peekable;
 use std::path::PathBuf;
 use std::process;
+use std::str::Chars;
 
 use cg_bundler::{Bundler, BundlerError, CargoProject, TransformConfig};
 
@@ -418,69 +420,9 @@ fn format_with_rustfmt(code: &str, verbose: bool) -> Option<String> {
 }
 
 fn minify_code(code: &str) -> String {
-    // Extract string and char literals before line-joining so that newlines
-    // embedded inside string literals are not replaced with spaces.
-    let mut string_literals: Vec<String> = Vec::new();
-    let mut placeholder_index = 0usize;
-    let mut preprocessed = String::with_capacity(code.len());
-    let mut chars = code.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        match ch {
-            '"' => {
-                let mut literal = String::from('"');
-                let mut escaped = false;
-                for inner in chars.by_ref() {
-                    literal.push(inner);
-                    if escaped {
-                        escaped = false;
-                    } else if inner == '\\' {
-                        escaped = true;
-                    } else if inner == '"' {
-                        break;
-                    }
-                }
-                let _ = write!(preprocessed, "__STRING_LITERAL_{placeholder_index}__");
-                string_literals.push(literal);
-                placeholder_index += 1;
-            }
-            '\'' => {
-                let mut literal = String::from('\'');
-                let mut found_close = false;
-                let mut escaped = false;
-                while let Some(&next) = chars.peek() {
-                    if !escaped
-                        && (next == ' '
-                            || next == ';'
-                            || next == '\n'
-                            || next == '>'
-                            || next == ','
-                            || next == ')')
-                    {
-                        break;
-                    }
-                    literal.push(next);
-                    chars.next();
-                    if escaped {
-                        escaped = false;
-                    } else if next == '\\' {
-                        escaped = true;
-                    } else if next == '\'' {
-                        found_close = true;
-                        break;
-                    }
-                }
-                if found_close {
-                    let _ = write!(preprocessed, "__STRING_LITERAL_{placeholder_index}__");
-                    string_literals.push(literal);
-                    placeholder_index += 1;
-                } else {
-                    preprocessed.push_str(&literal);
-                }
-            }
-            other => preprocessed.push(other),
-        }
-    }
+    // Extract literals before line-joining so embedded newlines in raw/cooked
+    // string literals are not rewritten as spaces.
+    let (preprocessed, string_literals) = extract_literals(code);
 
     let result = preprocessed
         .lines()
@@ -493,6 +435,151 @@ fn minify_code(code: &str) -> String {
     // literal whose contents happen to look like another placeholder cannot
     // be re-matched and corrupted.
     restore_literal_placeholders(&result, &string_literals)
+}
+
+fn extract_literals(code: &str) -> (String, Vec<String>) {
+    let mut literals: Vec<String> = Vec::new();
+    let mut placeholder_index = 0usize;
+    let mut preprocessed = String::with_capacity(code.len());
+    let mut chars = code.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if let Some(literal) = try_extract_literal(ch, &mut chars) {
+            let _ = write!(preprocessed, "__STRING_LITERAL_{placeholder_index}__");
+            literals.push(literal);
+            placeholder_index += 1;
+        } else {
+            preprocessed.push(ch);
+        }
+    }
+
+    (preprocessed, literals)
+}
+
+fn try_extract_literal(first: char, chars: &mut Peekable<Chars<'_>>) -> Option<String> {
+    match first {
+        '"' => Some(consume_quoted_string(chars, String::from('"'))),
+        '\'' => {
+            let (literal, found_closing) = consume_char_like_literal(chars, String::from('\''));
+            if found_closing { Some(literal) } else { None }
+        }
+        'r' => consume_raw_string(chars, String::from('r')),
+        'b' => {
+            if matches!(chars.peek(), Some('"')) {
+                chars.next();
+                return Some(consume_quoted_string(chars, String::from("b\"")));
+            }
+
+            if matches!(chars.peek(), Some('\'')) {
+                chars.next();
+                let (literal, found_closing) = consume_char_like_literal(chars, String::from("b'"));
+                return if found_closing { Some(literal) } else { None };
+            }
+
+            if matches!(chars.peek(), Some('r')) {
+                chars.next();
+                return consume_raw_string(chars, String::from("br"));
+            }
+
+            None
+        }
+        _ => None,
+    }
+}
+
+fn consume_quoted_string(chars: &mut Peekable<Chars<'_>>, mut literal: String) -> String {
+    let mut escaped = false;
+    for inner in chars.by_ref() {
+        literal.push(inner);
+        if escaped {
+            escaped = false;
+        } else if inner == '\\' {
+            escaped = true;
+        } else if inner == '"' {
+            break;
+        }
+    }
+    literal
+}
+
+fn consume_char_like_literal(
+    chars: &mut Peekable<Chars<'_>>,
+    mut literal: String,
+) -> (String, bool) {
+    let mut found_closing = false;
+    let mut escaped = false;
+
+    while let Some(&next) = chars.peek() {
+        if !escaped
+            && (next == ' '
+                || next == ';'
+                || next == '\n'
+                || next == '>'
+                || next == ','
+                || next == ')')
+        {
+            break;
+        }
+
+        literal.push(next);
+        chars.next();
+
+        if escaped {
+            escaped = false;
+        } else if next == '\\' {
+            escaped = true;
+        } else if next == '\'' {
+            found_closing = true;
+            break;
+        }
+    }
+
+    (literal, found_closing)
+}
+
+fn consume_raw_string(chars: &mut Peekable<Chars<'_>>, mut literal: String) -> Option<String> {
+    let mut lookahead = chars.clone();
+    let mut hash_count = 0usize;
+
+    while matches!(lookahead.peek(), Some('#')) {
+        lookahead.next();
+        hash_count += 1;
+    }
+
+    if !matches!(lookahead.next(), Some('"')) {
+        return None;
+    }
+
+    for _ in 0..hash_count {
+        chars.next();
+        literal.push('#');
+    }
+
+    chars.next();
+    literal.push('"');
+
+    while let Some(ch) = chars.next() {
+        literal.push(ch);
+
+        if ch == '"' {
+            let mut matched_terminator = true;
+            for _ in 0..hash_count {
+                if matches!(chars.peek(), Some('#')) {
+                    chars.next();
+                    literal.push('#');
+                } else {
+                    matched_terminator = false;
+                    break;
+                }
+            }
+
+            if matched_terminator {
+                return Some(literal);
+            }
+        }
+    }
+
+    Some(literal)
 }
 
 /// Replace every `__STRING_LITERAL_<n>__` placeholder in `text` with
@@ -526,82 +613,8 @@ fn aggressive_minify_code(code: &str) -> String {
     // First apply basic minification
     let result_initial = minify_code(code);
 
-    // Parse string literals to preserve them during aggressive minification
-
-    let mut string_literals = Vec::new();
-    let mut placeholder_index = 0;
-
-    // Extract string literals and replace with placeholders
-    let mut chars = result_initial.chars().peekable();
-    let mut output = String::new();
-
-    while let Some(char) = chars.next() {
-        // Start of string literal
-        match char {
-            '"' => {
-                let mut string_literal = String::from('"');
-                let mut escaped = false;
-
-                for inner_ch in chars.by_ref() {
-                    string_literal.push(inner_ch);
-                    if escaped {
-                        escaped = false;
-                    } else if inner_ch == '\\' {
-                        escaped = true;
-                    } else if inner_ch == '"' {
-                        break;
-                    }
-                }
-                // Store the string literal and use a placeholder
-                let _ = write!(output, "__STRING_LITERAL_{placeholder_index}__");
-                string_literals.push(string_literal);
-                placeholder_index += 1;
-            }
-            '\'' => {
-                let mut temp_buffer = String::from('\'');
-                let mut found_closing = false;
-                let mut escaped = false;
-
-                while let Some(&next_ch) = chars.peek() {
-                    if !escaped
-                        && (next_ch == ' '
-                            || next_ch == ';'
-                            || next_ch == '\n'
-                            || next_ch == '>'
-                            || next_ch == ','
-                            || next_ch == ')')
-                    {
-                        break;
-                    }
-
-                    temp_buffer.push(next_ch);
-                    chars.next();
-
-                    if escaped {
-                        escaped = false;
-                    } else if next_ch == '\\' {
-                        escaped = true;
-                    } else if next_ch == '\'' {
-                        found_closing = true;
-                        break;
-                    }
-                }
-
-                if found_closing {
-                    // Store the string literal and use a placeholder
-                    let _ = write!(output, "__STRING_LITERAL_{placeholder_index}__");
-                    string_literals.push(temp_buffer);
-                    placeholder_index += 1;
-                } else {
-                    output.push_str(&temp_buffer);
-                }
-            }
-
-            _ => {
-                output.push(char);
-            }
-        }
-    }
+    // Extract literals to protect raw/cooked/byte forms while tightening whitespace.
+    let (output, string_literals) = extract_literals(&result_initial);
 
     // Apply aggressive replacements to the code without string literals
     let re = Regex::new(r"\s*([=+*/%&|^<>,;:.()\[\]{}-])\s*").unwrap();
@@ -921,6 +934,27 @@ path = "src/lib.rs"
         assert!(
             result.contains("\"hello\nworld\""),
             "newline inside string literal was clobbered by aggressive minify: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_minify_code_preserves_raw_string_literals() {
+        let code =
+            "fn main() {\n    let s = r#\"hello\n\"quoted\" world\"#;\n    println!(\"{}\", s);\n}";
+        let result = minify_code(code);
+        assert!(
+            result.contains("r#\"hello\n\"quoted\" world\"#"),
+            "raw string literal was corrupted: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_aggressive_minify_preserves_raw_string_literals() {
+        let code = "fn main() {\n    let s = br#\"hello\n\"quoted\" world\"#;\n    println!(\"{:?}\", s);\n}";
+        let result = aggressive_minify_code(code);
+        assert!(
+            result.contains("br#\"hello\n\"quoted\" world\"#"),
+            "raw byte string literal was corrupted: {result:?}"
         );
     }
 
