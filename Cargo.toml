@@ -10,8 +10,8 @@ documentation = "https://docs.rs/cg-bundler"
 readme = "README.md"
 keywords = ["bundler", "single-file", "code-bundler", "codeforces", "codingame"]
 categories = ["command-line-utilities", "development-tools", "compression", "development-tools::build-utils"]
-edition = "2021"
-rust-version = "1.75.0"
+edition = "2024"
+rust-version = "1.91.0"
 exclude = [
     "target/",
     "test_project/",

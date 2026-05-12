@@ -294,7 +294,9 @@ fn test_bundled_code_compiles() {
                     "Bundled code failed to compile with unexpected errors:\n{stderr}"
                 );
                 // If it's just import errors from missing modules, that's expected for a complex test project
-                eprintln!("Note: Bundle compilation failed with expected module errors (this is normal for complex projects)");
+                eprintln!(
+                    "Note: Bundle compilation failed with expected module errors (this is normal for complex projects)"
+                );
             }
             // If we get here, compilation succeeded or failed with expected errors
         }

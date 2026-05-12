@@ -603,7 +603,11 @@ fn handle_watch_command(cli: &Cli) -> Result<(), BundlerError> {
 
                         if let Some(path) = event.paths.first() {
                             if let Some(file_name) = path.file_name() {
-                                println!("{} File change detected: {:?}", "🔄".yellow(), file_name);
+                                println!(
+                                    "{} File change detected: {}",
+                                    "🔄".yellow(),
+                                    file_name.to_string_lossy()
+                                );
                             } else {
                                 println!("{} File change detected", "🔄".yellow());
                             }

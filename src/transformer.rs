@@ -497,20 +497,20 @@ impl<'a> CodeTransformer<'a> {
 
     /// Check if item is an extern crate declaration
     fn is_extern_crate(item: &syn::Item, crate_name: &str) -> bool {
-        if let syn::Item::ExternCrate(ref item) = *item {
-            if item.ident == crate_name {
-                return true;
-            }
+        if let syn::Item::ExternCrate(ref item) = *item
+            && item.ident == crate_name
+        {
+            return true;
         }
         false
     }
 
     /// Check if path starts with a specific segment
     fn path_starts_with(path: &syn::Path, segment: &str) -> bool {
-        if let Some(el) = path.segments.first() {
-            if el.ident == segment {
-                return true;
-            }
+        if let Some(el) = path.segments.first()
+            && el.ident == segment
+        {
+            return true;
         }
         false
     }
