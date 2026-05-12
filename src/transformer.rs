@@ -486,7 +486,7 @@ impl<'a> CodeTransformer<'a> {
 
     /// Expand crate paths
     fn expand_crate_path(&self, path: &mut syn::Path) {
-        if Self::path_starts_with(path, self.crate_name) {
+        if path.segments.len() > 1 && Self::path_starts_with(path, self.crate_name) {
             let new_segments = mem::replace(&mut path.segments, Punctuated::new())
                 .into_pairs()
                 .skip(1)
@@ -638,6 +638,29 @@ mod tests {
             fn regular_function() {}
         };
         assert!(!CodeTransformer::has_test_attribute(&regular_fn));
+    }
+
+    #[test]
+    fn test_expand_crate_path_single_segment_not_stripped() {
+        // Regression test for issue #51:
+        // A single-segment path whose name matches the crate name (e.g., a function
+        // parameter named after the crate) must NOT be stripped, as that would produce
+        // an empty path and cause `prettyplease` to panic.
+        let base_path = PathBuf::from("/tmp");
+        let transformer = CodeTransformer::new(&base_path, "mycrate", TransformConfig::default());
+
+        // Single-segment path "mycrate" (local variable / parameter usage)
+        let mut path: syn::Path = syn::parse_quote!(mycrate);
+        transformer.expand_crate_path(&mut path);
+        // Must still have one segment — not stripped to empty
+        assert_eq!(path.segments.len(), 1);
+        assert_eq!(path.segments[0].ident.to_string(), "mycrate");
+
+        // Multi-segment path "mycrate::SomeType" must be stripped to "SomeType"
+        let mut path2: syn::Path = syn::parse_quote!(mycrate::SomeType);
+        transformer.expand_crate_path(&mut path2);
+        assert_eq!(path2.segments.len(), 1);
+        assert_eq!(path2.segments[0].ident.to_string(), "SomeType");
     }
 
     #[test]
