@@ -482,20 +482,44 @@ fn minify_code(code: &str) -> String {
         }
     }
 
-    let mut result = preprocessed
+    let result = preprocessed
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .collect::<Vec<&str>>()
         .join(" ");
 
-    // Restore string and char literals
-    for (i, literal) in string_literals.into_iter().enumerate() {
-        let placeholder = format!("__STRING_LITERAL_{i}__");
-        result = result.replace(&placeholder, &literal);
-    }
+    // Restore string and char literals via a single forward pass so that a
+    // literal whose contents happen to look like another placeholder cannot
+    // be re-matched and corrupted.
+    restore_literal_placeholders(&result, &string_literals)
+}
 
-    result
+/// Replace every `__STRING_LITERAL_<n>__` placeholder in `text` with
+/// `literals[n]` using a single forward scan. This is collision-safe:
+/// inserted literal content is never re-scanned, so a literal that contains
+/// the textual form of another placeholder will not be corrupted.
+fn restore_literal_placeholders(text: &str, literals: &[String]) -> String {
+    const MARKER: &str = "__STRING_LITERAL_";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(MARKER) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + MARKER.len()..];
+        if let Some(end) = after.find("__")
+            && let Ok(idx) = after[..end].parse::<usize>()
+            && let Some(literal) = literals.get(idx)
+        {
+            out.push_str(literal);
+            rest = &after[end + 2..];
+            continue;
+        }
+        // Not a valid placeholder; emit the marker literally and keep scanning.
+        out.push_str(MARKER);
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 fn aggressive_minify_code(code: &str) -> String {
@@ -594,13 +618,8 @@ fn aggressive_minify_code(code: &str) -> String {
         // and can confuse downstream tooling. Re-insert the separating space.
         .replace("<-", "< -");
 
-    // Restore string literals
-    for (i, string_literal) in string_literals.into_iter().enumerate() {
-        let placeholder = format!("__STRING_LITERAL_{i}__");
-        result = result.replace(&placeholder, &string_literal);
-    }
-
-    result
+    // Restore string literals via a collision-safe single forward pass.
+    restore_literal_placeholders(&result, &string_literals)
 }
 
 fn handle_watch_command(cli: &Cli) -> Result<(), BundlerError> {
@@ -912,6 +931,44 @@ path = "src/lib.rs"
         let code = "fn main() {\n    let s = \"a   b\\n\\tc\";\n}";
         let result = minify_code(code);
         assert!(result.contains("\"a   b\\n\\tc\""), "got: {result:?}");
+    }
+
+    /// Regression: a string literal whose *contents* happen to match the
+    /// textual form of an internal placeholder used by the minifier must NOT
+    /// cause cross-literal corruption during placeholder restoration.
+    /// Previously, restoring placeholders sequentially via `String::replace`
+    /// would mangle a literal whose content contained another literal's
+    /// placeholder marker.
+    #[test]
+    fn test_minify_code_handles_placeholder_collision() {
+        // First literal contains the textual form of the second literal's placeholder.
+        let code = "fn main() {\n    let a = \"danger __STRING_LITERAL_1__ inside\";\n    let b = \"second\";\n}";
+        let result = minify_code(code);
+        assert!(
+            result.contains("\"danger __STRING_LITERAL_1__ inside\""),
+            "first literal was corrupted by placeholder collision: {result:?}"
+        );
+        assert!(
+            result.contains("\"second\""),
+            "second literal missing: {result:?}"
+        );
+        // Result must be valid Rust.
+        syn::parse_file(&result).expect("minified code must be valid Rust");
+    }
+
+    #[test]
+    fn test_aggressive_minify_handles_placeholder_collision() {
+        let code = "fn main() {\n    let a = \"danger __STRING_LITERAL_1__ inside\";\n    let b = \"second\";\n}";
+        let result = aggressive_minify_code(code);
+        assert!(
+            result.contains("\"danger __STRING_LITERAL_1__ inside\""),
+            "first literal was corrupted by placeholder collision: {result:?}"
+        );
+        assert!(
+            result.contains("\"second\""),
+            "second literal missing: {result:?}"
+        );
+        syn::parse_file(&result).expect("aggressively minified code must be valid Rust");
     }
 
     // ── format_with_rustfmt ────────────────────────────────────────────────
