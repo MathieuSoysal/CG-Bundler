@@ -1013,7 +1013,7 @@ path = "src/lib.rs"
     fn test_aggressive_minify_code_with_escaped_char_literal() {
         // Covers the escaped backslash branches inside the '\'' arm (lines 484, 486):
         // `escaped = false` and `escaped = true` are hit for `'\\'` or `'\n'`.
-        let code = r#"fn f() { let _bs = '\\'; let _nl = '\n'; }"#;
+        let code = r"fn f() { let _bs = '\\'; let _nl = '\n'; }";
         let result = aggressive_minify_code(code);
         // We don't assert the exact form since it depends on how the parser
         // reconstructs the char; just verify no panic and the function runs.
@@ -1163,7 +1163,7 @@ path = "src/lib.rs"
         let event = Event {
             kind: EventKind::Create(CreateKind::File),
             paths: vec![PathBuf::from("src/main.rs")],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
         assert!(should_rebuild(&event));
     }
@@ -1177,7 +1177,7 @@ path = "src/lib.rs"
         let event = Event {
             kind: EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Any)),
             paths: vec![PathBuf::from("src/lib.rs")],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
         assert!(should_rebuild(&event));
     }
@@ -1191,7 +1191,7 @@ path = "src/lib.rs"
         let event = Event {
             kind: EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Any)),
             paths: vec![PathBuf::from("README.md")],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
         assert!(!should_rebuild(&event));
     }
@@ -1205,7 +1205,7 @@ path = "src/lib.rs"
         let event = Event {
             kind: EventKind::Remove(RemoveKind::File),
             paths: vec![PathBuf::from("src/utils.rs")],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
         assert!(should_rebuild(&event));
     }
@@ -1219,7 +1219,7 @@ path = "src/lib.rs"
         let event = Event {
             kind: EventKind::Access(AccessKind::Read),
             paths: vec![PathBuf::from("src/main.rs")],
-            attrs: Default::default(),
+            attrs: notify::event::EventAttributes::default(),
         };
         assert!(!should_rebuild(&event));
     }
