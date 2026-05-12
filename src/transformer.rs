@@ -216,7 +216,8 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Check if an attribute is a documentation attribute
-    fn is_doc_attribute(attr: &syn::Attribute) -> bool {
+    #[must_use]
+    pub fn is_doc_attribute(attr: &syn::Attribute) -> bool {
         if attr.path().is_ident("doc") {
             return true;
         }
@@ -330,7 +331,8 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Check if an item has test attributes
-    fn has_test_attribute(item: &syn::Item) -> bool {
+    #[must_use]
+    pub fn has_test_attribute(item: &syn::Item) -> bool {
         let attrs = match item {
             syn::Item::Fn(item_fn) => &item_fn.attrs,
             syn::Item::Mod(item_mod) => &item_mod.attrs,
@@ -485,7 +487,7 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Expand crate paths
-    fn expand_crate_path(&self, path: &mut syn::Path) {
+    pub fn expand_crate_path(&self, path: &mut syn::Path) {
         if path.segments.len() > 1 && Self::path_starts_with(path, self.crate_name) {
             let new_segments = mem::replace(&mut path.segments, Punctuated::new())
                 .into_pairs()
@@ -496,7 +498,8 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Check if item is an extern crate declaration
-    fn is_extern_crate(item: &syn::Item, crate_name: &str) -> bool {
+    #[must_use]
+    pub fn is_extern_crate(item: &syn::Item, crate_name: &str) -> bool {
         if let syn::Item::ExternCrate(ref item) = *item
             && item.ident == crate_name
         {
@@ -516,7 +519,8 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Check if item is a use path that references the crate
-    fn is_use_path(item: &syn::Item, first_segment: &str) -> bool {
+    #[must_use]
+    pub fn is_use_path(item: &syn::Item, first_segment: &str) -> bool {
         if let syn::Item::Use(ref item) = *item {
             return Self::use_tree_references_crate(&item.tree, first_segment);
         }
@@ -524,7 +528,8 @@ impl<'a> CodeTransformer<'a> {
     }
 
     /// Check if a use tree references the specified crate
-    fn use_tree_references_crate(tree: &syn::UseTree, crate_name: &str) -> bool {
+    #[must_use]
+    pub fn use_tree_references_crate(tree: &syn::UseTree, crate_name: &str) -> bool {
         match tree {
             syn::UseTree::Path(path) => {
                 // Check if the first segment is the crate name
@@ -587,107 +592,5 @@ impl VisitMut for CodeTransformer<'_> {
             let segment = el.value_mut();
             self.visit_path_segment_mut(segment);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_transform_config_default() {
-        let config = TransformConfig::default();
-        assert!(config.remove_tests);
-        assert!(config.remove_docs);
-        assert!(config.expand_modules);
-        assert!(!config.minify);
-        assert!(!config.aggressive_minify);
-    }
-
-    #[test]
-    fn test_is_doc_attribute() {
-        let base_path = PathBuf::from("/tmp");
-        let _transformer =
-            CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
-
-        // Test with a doc attribute
-        let doc_attr: syn::Attribute = syn::parse_quote!(#[doc = "test"]);
-        assert!(CodeTransformer::is_doc_attribute(&doc_attr));
-
-        // Test with a non-doc attribute
-        let non_doc_attr: syn::Attribute = syn::parse_quote!(#[test]);
-        assert!(!CodeTransformer::is_doc_attribute(&non_doc_attr));
-    }
-
-    #[test]
-    fn test_has_test_attribute() {
-        let base_path = PathBuf::from("/tmp");
-        let _transformer =
-            CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
-
-        // Test function with test attribute
-        let test_fn: syn::Item = syn::parse_quote! {
-            #[test]
-            fn test_function() {}
-        };
-        assert!(CodeTransformer::has_test_attribute(&test_fn));
-
-        // Test regular function
-        let regular_fn: syn::Item = syn::parse_quote! {
-            fn regular_function() {}
-        };
-        assert!(!CodeTransformer::has_test_attribute(&regular_fn));
-    }
-
-    #[test]
-    fn test_expand_crate_path_single_segment_not_stripped() {
-        // Regression test for issue #51:
-        // A single-segment path whose name matches the crate name (e.g., a function
-        // parameter named after the crate) must NOT be stripped, as that would produce
-        // an empty path and cause `prettyplease` to panic.
-        let base_path = PathBuf::from("/tmp");
-        let transformer = CodeTransformer::new(&base_path, "mycrate", TransformConfig::default());
-
-        // Single-segment path "mycrate" (local variable / parameter usage)
-        let mut path: syn::Path = syn::parse_quote!(mycrate);
-        transformer.expand_crate_path(&mut path);
-        // Must still have one segment — not stripped to empty
-        assert_eq!(path.segments.len(), 1);
-        assert_eq!(path.segments[0].ident.to_string(), "mycrate");
-
-        // Multi-segment path "mycrate::SomeType" must be stripped to "SomeType"
-        let mut path2: syn::Path = syn::parse_quote!(mycrate::SomeType);
-        transformer.expand_crate_path(&mut path2);
-        assert_eq!(path2.segments.len(), 1);
-        assert_eq!(path2.segments[0].ident.to_string(), "SomeType");
-    }
-
-    #[test]
-    fn test_is_extern_crate() {
-        let base_path = PathBuf::from("/tmp");
-        let _transformer =
-            CodeTransformer::new(&base_path, "test_crate", TransformConfig::default());
-
-        // Test extern crate with matching name
-        let extern_crate_item: syn::Item = syn::parse_quote! {
-            extern crate test_crate;
-        };
-        assert!(CodeTransformer::is_extern_crate(
-            &extern_crate_item,
-            "test_crate"
-        ));
-
-        // Test extern crate with different name
-        assert!(!CodeTransformer::is_extern_crate(
-            &extern_crate_item,
-            "other_crate"
-        ));
-
-        // Test non-extern-crate item
-        let fn_item: syn::Item = syn::parse_quote! {
-            fn test() {}
-        };
-        assert!(!CodeTransformer::is_extern_crate(&fn_item, "test_crate"));
     }
 }

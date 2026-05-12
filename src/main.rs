@@ -514,7 +514,12 @@ fn aggressive_minify_code(code: &str) -> String {
         .replace(",}", "}")
         .replace(",)", ")")
         .replace(",#", "#")
-        .replace(",]", "]");
+        .replace(",]", "]")
+        // Fix: the regex strips the space between '<' and a leading '-', turning
+        // `x < -1` into `x<-1`. In Rust 2015 `<-` was a reserved placement
+        // operator, and even in later editions the sequence is visually misleading
+        // and can confuse downstream tooling. Re-insert the separating space.
+        .replace("<-", "< -");
 
     // Restore string literals
     for (i, string_literal) in string_literals.into_iter().enumerate() {
@@ -653,6 +658,573 @@ fn should_rebuild(event: &notify::Event) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    // ── helpers ────────────────────────────────────────────────────────────
+
+    fn make_project(dir: &std::path::Path, main_src: &str) {
+        let cargo_toml = r#"[package]
+name = "test_proj"
+version = "0.1.0"
+edition = "2021"
+"#;
+        fs::write(dir.join("Cargo.toml"), cargo_toml).unwrap();
+        fs::create_dir_all(dir.join("src")).unwrap();
+        fs::write(dir.join("src/main.rs"), main_src).unwrap();
+    }
+
+    fn make_project_with_lib(dir: &std::path::Path) {
+        let cargo_toml = r#"[package]
+name = "test_proj"
+version = "0.1.0"
+edition = "2021"
+description = "a test project"
+
+[[bin]]
+name = "test_proj"
+path = "src/main.rs"
+
+[lib]
+name = "test_proj"
+path = "src/lib.rs"
+"#;
+        fs::write(dir.join("Cargo.toml"), cargo_toml).unwrap();
+        fs::create_dir_all(dir.join("src")).unwrap();
+        fs::write(
+            dir.join("src/lib.rs"),
+            "pub fn greet() -> &'static str { \"hi\" }",
+        )
+        .unwrap();
+        fs::write(dir.join("src/main.rs"), "fn main() {}").unwrap();
+    }
+
+    // ── display_bug_report_info ────────────────────────────────────────────
+
+    #[test]
+    fn test_display_bug_report_info_does_not_panic() {
+        // Function only writes to stderr – just verify it doesn't panic.
+        display_bug_report_info();
+    }
+
+    // ── Cli accessor methods ───────────────────────────────────────────────
+
+    #[test]
+    fn test_cli_get_project_path_default() {
+        let cli = Cli::try_parse_from(["cg-bundler"]).unwrap();
+        assert_eq!(cli.get_project_path(), PathBuf::from("."));
+    }
+
+    #[test]
+    fn test_cli_get_project_path_custom() {
+        let cli = Cli::try_parse_from(["cg-bundler", "/tmp/myproj"]).unwrap();
+        assert_eq!(cli.get_project_path(), PathBuf::from("/tmp/myproj"));
+    }
+
+    #[test]
+    fn test_cli_is_verbose_flag() {
+        let cli = Cli::try_parse_from(["cg-bundler", "--verbose"]).unwrap();
+        assert!(cli.is_verbose());
+
+        let cli2 = Cli::try_parse_from(["cg-bundler"]).unwrap();
+        assert!(!cli2.is_verbose());
+    }
+
+    #[test]
+    fn test_cli_is_pretty() {
+        let cli = Cli::try_parse_from(["cg-bundler", "--pretty"]).unwrap();
+        assert!(cli.is_pretty());
+
+        let cli2 = Cli::try_parse_from(["cg-bundler"]).unwrap();
+        assert!(!cli2.is_pretty());
+    }
+
+    #[test]
+    fn test_cli_is_minify_and_aggressive() {
+        let cli_m = Cli::try_parse_from(["cg-bundler", "--minify"]).unwrap();
+        assert!(cli_m.is_minify());
+        assert!(!cli_m.is_aggressive_minify());
+
+        let cli_m2 = Cli::try_parse_from(["cg-bundler", "--m2"]).unwrap();
+        assert!(cli_m2.is_minify());
+        assert!(cli_m2.is_aggressive_minify());
+
+        let cli_none = Cli::try_parse_from(["cg-bundler"]).unwrap();
+        assert!(!cli_none.is_minify());
+        assert!(!cli_none.is_aggressive_minify());
+    }
+
+    #[test]
+    fn test_cli_get_output() {
+        let cli_none = Cli::try_parse_from(["cg-bundler"]).unwrap();
+        assert!(cli_none.get_output().is_none());
+
+        let cli_out = Cli::try_parse_from(["cg-bundler", "-o", "out.rs"]).unwrap();
+        assert!(cli_out.get_output().is_some());
+        assert_eq!(cli_out.get_output().unwrap(), &PathBuf::from("out.rs"));
+    }
+
+    #[test]
+    fn test_cli_get_transform_config_flags() {
+        let cli = Cli::try_parse_from(["cg-bundler", "--keep-tests", "--keep-docs"]).unwrap();
+        let config = cli.get_transform_config();
+        assert!(!config.remove_tests);
+        assert!(!config.remove_docs);
+        assert!(config.expand_modules);
+        assert!(!config.minify);
+        assert!(!config.aggressive_minify);
+
+        let cli_m2 = Cli::try_parse_from(["cg-bundler", "--m2"]).unwrap();
+        let config_m2 = cli_m2.get_transform_config();
+        assert!(config_m2.aggressive_minify);
+        assert!(config_m2.minify);
+
+        let cli_no = Cli::try_parse_from(["cg-bundler", "--no-expand-modules"]).unwrap();
+        let config_no = cli_no.get_transform_config();
+        assert!(!config_no.expand_modules);
+    }
+
+    // ── minify_code ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_minify_code_removes_newlines() {
+        let code = "fn main() {\n    let x = 5;\n    println!(\"x={}\", x);\n}";
+        let result = minify_code(code);
+        assert!(!result.contains('\n'));
+        assert!(result.contains("fn main"));
+        assert!(result.contains("let x"));
+    }
+
+    #[test]
+    fn test_minify_code_removes_empty_lines() {
+        let code = "fn a() {}\n\n\nfn b() {}";
+        let result = minify_code(code);
+        assert_eq!(result, "fn a() {} fn b() {}");
+    }
+
+    // ── format_with_rustfmt ────────────────────────────────────────────────
+
+    #[test]
+    fn test_format_with_rustfmt_valid_code() {
+        let code = "fn main(){let x=5;println!(\"{}\",x);}";
+        let result = format_with_rustfmt(code, false);
+        // May be None if rustfmt not available; if Some, must contain fn main
+        if let Some(formatted) = result {
+            assert!(formatted.contains("fn main"));
+        }
+    }
+
+    #[test]
+    fn test_format_with_rustfmt_invalid_code() {
+        // Invalid Rust should cause rustfmt to fail -> None
+        let code = "fn broken( { let";
+        let result = format_with_rustfmt(code, false);
+        assert!(result.is_none());
+    }
+
+    // ── handle_bundle_command ──────────────────────────────────────────────
+
+    #[test]
+    fn test_handle_bundle_command_basic() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() { println!(\"hello\"); }");
+
+        let cli = Cli::try_parse_from(["cg-bundler", tmp.path().to_str().unwrap()]).unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_minify() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+
+        let cli =
+            Cli::try_parse_from(["cg-bundler", tmp.path().to_str().unwrap(), "--minify"]).unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_m2() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() { let x: i32 = -1; let _ = x < -1; }");
+
+        let cli =
+            Cli::try_parse_from(["cg-bundler", tmp.path().to_str().unwrap(), "--m2"]).unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_verbose() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+
+        let cli =
+            Cli::try_parse_from(["cg-bundler", tmp.path().to_str().unwrap(), "--verbose"]).unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_to_file() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        let out = tmp.path().join("out.rs");
+
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+        ])
+        .unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+        assert!(out.exists());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_to_file_verbose() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        let out = tmp.path().join("out.rs");
+
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--verbose",
+            "-o",
+            out.to_str().unwrap(),
+        ])
+        .unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_pretty_verbose_invalid_code() {
+        // Forces the "Warning: rustfmt formatting failed" verbose branch by using
+        // code that rustfmt would reject (invalid Rust syntax would already be rejected
+        // by syn, so use valid-but-unfixable input: just provide normal code and
+        // let format_with_rustfmt return Some/None naturally).
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--pretty",
+            "--verbose",
+        ])
+        .unwrap();
+        // Either path (rustfmt available or not) is fine; we just ensure no panic.
+        let _ = handle_bundle_command(&cli);
+    }
+
+    #[test]
+    fn test_handle_bundle_command_invalid_path() {
+        let cli = Cli::try_parse_from(["cg-bundler", "/nonexistent/path/xyz"]).unwrap();
+        assert!(handle_bundle_command(&cli).is_err());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_pretty() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+
+        let cli =
+            Cli::try_parse_from(["cg-bundler", tmp.path().to_str().unwrap(), "--pretty"]).unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_m2_verbose() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() { let x: i32 = -1; let _ = x < -1; }");
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--m2",
+            "--verbose",
+        ])
+        .unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_minify_verbose() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--minify",
+            "--verbose",
+        ])
+        .unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+    }
+
+    #[test]
+    fn test_handle_bundle_command_pretty_verbose() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--pretty",
+            "--verbose",
+        ])
+        .unwrap();
+        assert!(handle_bundle_command(&cli).is_ok());
+    }
+
+    #[test]
+    fn test_format_with_rustfmt_verbose() {
+        let code = "fn main(){let x=5;println!(\"{}\",x);}";
+        // Should not panic regardless of whether rustfmt is installed
+        let _result = format_with_rustfmt(code, true);
+    }
+
+    // ── aggressive_minify_code edge cases ────────────────────────────────
+
+    #[test]
+    fn test_aggressive_minify_code_with_escaped_string_chars() {
+        // Covers the escape-tracking branches inside the '"' arm (lines 451, 453):
+        // `escaped = false` and `escaped = true` are hit only when the input
+        // contains a backslash-escaped character inside a double-quoted literal.
+        let code = r#"fn f() { let s = "hello \"world\" \\path"; }"#;
+        let result = aggressive_minify_code(code);
+        // The escaped string content must be preserved verbatim
+        assert!(
+            result.contains(r#""hello \"world\" \\path""#),
+            "escaped string content must survive minification: {result}"
+        );
+    }
+
+    #[test]
+    fn test_aggressive_minify_code_with_char_literals() {
+        // Covers the `found_closing = true` branch and the subsequent storage
+        // path (lines 488, 495-497) by providing plain char literals.
+        let code = "fn f() { let _a = 'a'; let _z = 'z'; }";
+        let result = aggressive_minify_code(code);
+        assert!(
+            result.contains("'a'") && result.contains("'z'"),
+            "char literals must survive minification: {result}"
+        );
+    }
+
+    #[test]
+    fn test_aggressive_minify_code_with_escaped_char_literal() {
+        // Covers the escaped backslash branches inside the '\'' arm (lines 484, 486):
+        // `escaped = false` and `escaped = true` are hit for `'\\'` or `'\n'`.
+        let code = r#"fn f() { let _bs = '\\'; let _nl = '\n'; }"#;
+        let result = aggressive_minify_code(code);
+        // We don't assert the exact form since it depends on how the parser
+        // reconstructs the char; just verify no panic and the function runs.
+        let _ = result;
+    }
+
+    // ── handle_info_command with dependencies ──────────────────────────────
+
+    #[test]
+    fn test_handle_info_command_with_dependencies() {
+        // Use the CG-Bundler project itself which has several dependencies.
+        // This covers the `for dep in &package.dependencies { println!(...) }` loop (lines 368-369).
+        let current_dir = std::env::current_dir().unwrap();
+        if current_dir.join("Cargo.toml").exists() {
+            let result = handle_info_command(&current_dir);
+            assert!(result.is_ok());
+        }
+    }
+
+    // ── handle_bundle_command write-to-dir (fs::write failure) ────────────
+
+    #[test]
+    fn test_handle_bundle_command_write_to_directory_fails() {
+        // Writing to a directory path (not a file) causes fs::write to return an Io error.
+        // This covers the map_err closure on fs::write (lines 245-246).
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "-o",
+            tmp.path().to_str().unwrap(), // output path IS a directory → write fails
+        ])
+        .unwrap();
+        let result = handle_bundle_command(&cli);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            BundlerError::Io { .. } => {}
+            e => panic!("Expected Io error from failed fs::write, got: {e}"),
+        }
+    }
+
+    #[test]
+    fn test_handle_watch_command_missing_src_dir_no_output() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        // src_dir "nonexistent_xyz" does not exist under the project → early error return
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--watch",
+            "--src-dir",
+            "nonexistent_xyz",
+        ])
+        .unwrap();
+        let result = handle_watch_command(&cli);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            BundlerError::Io { .. } => {}
+            e => panic!("Expected Io error, got: {e}"),
+        }
+    }
+
+    #[test]
+    fn test_handle_watch_command_missing_src_dir_with_output() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        let out = tmp.path().join("out.rs");
+        // With --output flag so the "if let Some(output)" branch is covered
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--watch",
+            "--src-dir",
+            "nonexistent_xyz",
+            "-o",
+            out.to_str().unwrap(),
+        ])
+        .unwrap();
+        let result = handle_watch_command(&cli);
+        assert!(result.is_err());
+    }
+
+    // ── handle_validate_command ────────────────────────────────────────────
+
+    #[test]
+    fn test_handle_validate_command_valid() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        assert!(handle_validate_command(&tmp.path().to_path_buf(), false).is_ok());
+    }
+
+    #[test]
+    fn test_handle_validate_command_verbose() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        assert!(handle_validate_command(&tmp.path().to_path_buf(), true).is_ok());
+    }
+
+    #[test]
+    fn test_handle_validate_command_verbose_with_lib() {
+        let tmp = TempDir::new().unwrap();
+        make_project_with_lib(tmp.path());
+        // verbose=true with a library target → covers the "Library target:" eprintln
+        assert!(handle_validate_command(&tmp.path().to_path_buf(), true).is_ok());
+    }
+
+    #[test]
+    fn test_handle_validate_command_invalid() {
+        let tmp = TempDir::new().unwrap();
+        let bad = tmp.path().join("nonexistent");
+        assert!(handle_validate_command(&bad, false).is_err());
+    }
+
+    // ── handle_info_command ────────────────────────────────────────────────
+
+    #[test]
+    fn test_handle_info_command_valid() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        assert!(handle_info_command(&tmp.path().to_path_buf()).is_ok());
+    }
+
+    #[test]
+    fn test_handle_info_command_with_lib_and_description() {
+        let tmp = TempDir::new().unwrap();
+        make_project_with_lib(tmp.path());
+        // Covers: description branch, library target branch in info command
+        assert!(handle_info_command(&tmp.path().to_path_buf()).is_ok());
+    }
+
+    #[test]
+    fn test_handle_info_command_invalid() {
+        let tmp = TempDir::new().unwrap();
+        let bad = tmp.path().join("nonexistent");
+        assert!(handle_info_command(&bad).is_err());
+    }
+
+    // ── should_rebuild ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_should_rebuild_create_rs_file() {
+        use notify::{
+            Event,
+            event::{CreateKind, EventKind},
+        };
+        let event = Event {
+            kind: EventKind::Create(CreateKind::File),
+            paths: vec![PathBuf::from("src/main.rs")],
+            attrs: Default::default(),
+        };
+        assert!(should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_modify_rs_file() {
+        use notify::{
+            Event,
+            event::{EventKind, ModifyKind},
+        };
+        let event = Event {
+            kind: EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Any)),
+            paths: vec![PathBuf::from("src/lib.rs")],
+            attrs: Default::default(),
+        };
+        assert!(should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_non_rs_file() {
+        use notify::{
+            Event,
+            event::{EventKind, ModifyKind},
+        };
+        let event = Event {
+            kind: EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Any)),
+            paths: vec![PathBuf::from("README.md")],
+            attrs: Default::default(),
+        };
+        assert!(!should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_remove_rs_file() {
+        use notify::{
+            Event,
+            event::{EventKind, RemoveKind},
+        };
+        let event = Event {
+            kind: EventKind::Remove(RemoveKind::File),
+            paths: vec![PathBuf::from("src/utils.rs")],
+            attrs: Default::default(),
+        };
+        assert!(should_rebuild(&event));
+    }
+
+    #[test]
+    fn test_should_rebuild_access_event() {
+        use notify::{
+            Event,
+            event::{AccessKind, EventKind},
+        };
+        let event = Event {
+            kind: EventKind::Access(AccessKind::Read),
+            paths: vec![PathBuf::from("src/main.rs")],
+            attrs: Default::default(),
+        };
+        assert!(!should_rebuild(&event));
+    }
+
+    // ── original tests ─────────────────────────────────────────────────────
 
     #[test]
     fn test_aggressive_minify_code() {
@@ -684,5 +1256,43 @@ fn main() {
 "#;
         let minify_code = r#"trait Printable{fn print(&self);}struct Person{name:String}impl Printable for Person{fn print(&self){println!("Person: {}",self.name);}}impl Person{fn new(name:String)->Self{Person{name}}}fn main(){let person=Person::new("Alice".to_string());person.print();}"#;
         assert_eq!(aggressive_minify_code(snippet), minify_code);
+    }
+
+    #[test]
+    fn test_aggressive_minify_does_not_create_spurious_arrow_sequences() {
+        // The < comparison operator followed by a negative number must not
+        // produce the '<-' sequence, which is misleading and can break parsers
+        // in some Rust editions.  See: https://github.com/MathieuSoysal/CG-Bundler/issues/60
+        let snippet = r#"
+fn classify(x: i32) -> &'static str {
+    match x {
+        n if n < -10 => "very negative",
+        n if n < 0 => "negative",
+        0 => "zero",
+        _ => "positive",
+    }
+}
+
+fn filter_neg(v: &[i32]) -> Vec<i32> {
+    v.iter().filter(|&&x| x < -1).cloned().collect()
+}
+"#;
+        let result = aggressive_minify_code(snippet);
+        // '<-' must never appear: it is not a valid Rust operator and arises
+        // only from incorrectly joining '< ' and '-'.
+        assert!(
+            !result.contains("<-"),
+            "spurious '<-' sequence found in minified output: {result}"
+        );
+        // The legitimate '->' (return type arrow) must still be present.
+        assert!(
+            result.contains("->"),
+            "'->' was unexpectedly removed from minified output: {result}"
+        );
+        // Match-arm fat arrows must still be present.
+        assert!(
+            result.contains("=>"),
+            "'=>' was unexpectedly removed from minified output: {result}"
+        );
     }
 }
