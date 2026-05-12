@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.90%2B-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Crates.io](https://img.shields.io/crates/v/cg-bundler.svg)](https://crates.io/crates/cg-bundler)
 [![Documentation](https://docs.rs/cg-bundler/badge.svg)](https://docs.rs/cg-bundler)
@@ -88,9 +88,9 @@ cg-bundler --watch -o output.rs --verbose --debounce 200
 
 ## 📋 Requirements
 
-- **Rust 1.75.0** or later
+- **Rust 1.90.0** or later
 - **Cargo** (comes with Rust)
-- Compatible with **all Rust editions** (2015, 2018, 2021)
+- Compatible with **all Rust editions** (2015, 2018, 2021, 2024)
 
 ## 🎛️ CLI Options
 
