@@ -202,49 +202,14 @@ impl CargoProject {
     pub fn external_lib_paths(&self) -> HashMap<String, PathBuf> {
         let mut map = HashMap::new();
 
-        let Some(resolve) = &self.metadata.resolve else {
-            return map;
-        };
-
-        let Some(root_node) = resolve
-            .nodes
-            .iter()
-            .find(|node| node.id == self.root_package.id)
-        else {
+        let Some(root_node) = self.root_resolve_node() else {
             return map;
         };
 
         for dep in &self.root_package.dependencies {
-            // Rename takes precedence over the package name as the in-code crate identifier.
-            let crate_name = dep.rename.as_deref().map_or_else(
-                || Self::normalize_crate_identifier(&dep.name),
-                Self::normalize_crate_identifier,
-            );
+            let crate_name = Self::dependency_crate_name(dep);
 
-            // Locate the resolved package ids for this direct dependency name
-            // as it appears in code (after rename normalization).
-            let matching_pkg_ids: Vec<_> = root_node
-                .deps
-                .iter()
-                .filter(|node_dep| Self::normalize_crate_identifier(&node_dep.name) == crate_name)
-                .map(|node_dep| &node_dep.pkg)
-                .collect();
-
-            if matching_pkg_ids.is_empty() {
-                continue;
-            }
-
-            for pkg_id in matching_pkg_ids {
-                let Some(pkg) = self.metadata.packages.iter().find(|p| p.id == *pkg_id) else {
-                    continue;
-                };
-
-                // Skip the root package (the project being bundled).
-                if pkg.id == self.root_package.id {
-                    continue;
-                }
-
-                // Only inline deps that actually provide a library target.
+            for pkg in self.dependency_packages(root_node, &crate_name) {
                 if let Some(lib_target) = pkg.targets.iter().find(|t| Self::target_is(t, "lib")) {
                     map.insert(
                         crate_name.clone(),
@@ -256,5 +221,37 @@ impl CargoProject {
         }
 
         map
+    }
+
+    fn dependency_crate_name(dep: &cargo_metadata::Dependency) -> String {
+        dep.rename.as_deref().map_or_else(
+            || Self::normalize_crate_identifier(&dep.name),
+            Self::normalize_crate_identifier,
+        )
+    }
+
+    fn root_resolve_node(&self) -> Option<&cargo_metadata::Node> {
+        let resolve = self.metadata.resolve.as_ref()?;
+        resolve
+            .nodes
+            .iter()
+            .find(|node| node.id == self.root_package.id)
+    }
+
+    fn dependency_packages<'a>(
+        &'a self,
+        root_node: &'a cargo_metadata::Node,
+        crate_name: &str,
+    ) -> impl Iterator<Item = &'a Package> {
+        root_node
+            .deps
+            .iter()
+            .filter(move |node_dep| Self::normalize_crate_identifier(&node_dep.name) == crate_name)
+            .filter_map(|node_dep| self.package_by_id(&node_dep.pkg))
+            .filter(move |pkg| pkg.id != self.root_package.id)
+    }
+
+    fn package_by_id(&self, id: &cargo_metadata::PackageId) -> Option<&Package> {
+        self.metadata.packages.iter().find(|p| p.id == *id)
     }
 }
