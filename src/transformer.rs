@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::mem;
 use std::path::{Path, PathBuf};
 use syn::punctuated::Punctuated;
+use syn::visit::Visit;
 use syn::visit_mut::VisitMut;
 
 use crate::error::{BundlerError, Result};
@@ -124,12 +125,18 @@ impl<'a> CodeTransformer<'a> {
     /// they now resolve against the newly created module.
     fn expand_external_libs(&self, items: &mut Vec<syn::Item>) -> Result<()> {
         // Collect the names we actually need to expand to avoid borrowing issues.
-        let to_expand: Vec<(String, PathBuf)> = self
+        let mut to_expand: Vec<(String, PathBuf)> = self
             .external_libs
             .iter()
-            .filter(|(name, _)| items.iter().any(|item| Self::is_use_path(item, name)))
+            .filter(|(name, _)| {
+                items.iter().any(|item| {
+                    Self::is_use_path(item, name) || Self::item_references_crate(item, name)
+                })
+            })
             .map(|(name, path)| (name.clone(), path.clone()))
             .collect();
+
+        to_expand.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
         for (ext_name, ext_lib_path) in to_expand {
             self.expand_external_lib(items, &ext_name, &ext_lib_path)?;
@@ -145,6 +152,10 @@ impl<'a> CodeTransformer<'a> {
         ext_name: &str,
         ext_lib_path: &Path,
     ) -> Result<()> {
+        if Self::has_module_named(items, ext_name) {
+            return Ok(());
+        }
+
         let code =
             FileManager::read_file(ext_lib_path).map_err(|e| BundlerError::ProjectStructure {
                 message: format!(
@@ -189,6 +200,42 @@ impl<'a> CodeTransformer<'a> {
         items.insert(0, mod_item);
 
         Ok(())
+    }
+
+    fn has_module_named(items: &[syn::Item], module_name: &str) -> bool {
+        items.iter().any(|item| {
+            if let syn::Item::Mod(item_mod) = item {
+                return item_mod.ident == module_name;
+            }
+            false
+        })
+    }
+
+    fn item_references_crate(item: &syn::Item, crate_name: &str) -> bool {
+        struct PathRootVisitor<'a> {
+            crate_name: &'a str,
+            found: bool,
+        }
+
+        impl<'ast> Visit<'ast> for PathRootVisitor<'_> {
+            fn visit_path(&mut self, path: &'ast syn::Path) {
+                if let Some(first) = path.segments.first()
+                    && first.ident == self.crate_name
+                {
+                    self.found = true;
+                    return;
+                }
+
+                syn::visit::visit_path(self, path);
+            }
+        }
+
+        let mut visitor = PathRootVisitor {
+            crate_name,
+            found: false,
+        };
+        visitor.visit_item(item);
+        visitor.found
     }
 
     /// Remove file-level documentation

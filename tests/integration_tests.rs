@@ -2689,7 +2689,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-hello-world = {{ path = "{}" }}
+hello-world = {{ path = '{}' }}
 "#,
             ext_crate_path.display()
         ),

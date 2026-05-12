@@ -202,6 +202,18 @@ impl CargoProject {
     pub fn external_lib_paths(&self) -> HashMap<String, PathBuf> {
         let mut map = HashMap::new();
 
+        let Some(resolve) = &self.metadata.resolve else {
+            return map;
+        };
+
+        let Some(root_node) = resolve
+            .nodes
+            .iter()
+            .find(|node| node.id == self.root_package.id)
+        else {
+            return map;
+        };
+
         for dep in &self.root_package.dependencies {
             // Rename takes precedence over the package name as the in-code crate identifier.
             let crate_name = dep.rename.as_deref().map_or_else(
@@ -209,22 +221,37 @@ impl CargoProject {
                 Self::normalize_crate_identifier,
             );
 
-            // Locate the resolved package for this dependency.
-            let Some(pkg) = self.metadata.packages.iter().find(|p| {
-                Self::normalize_crate_identifier(&p.name)
-                    == Self::normalize_crate_identifier(&dep.name)
-            }) else {
-                continue;
-            };
+            // Locate the resolved package ids for this direct dependency name
+            // as it appears in code (after rename normalization).
+            let matching_pkg_ids: Vec<_> = root_node
+                .deps
+                .iter()
+                .filter(|node_dep| Self::normalize_crate_identifier(&node_dep.name) == crate_name)
+                .map(|node_dep| &node_dep.pkg)
+                .collect();
 
-            // Skip the root package (the project being bundled).
-            if pkg.id == self.root_package.id {
+            if matching_pkg_ids.is_empty() {
                 continue;
             }
 
-            // Only inline deps that actually provide a library target.
-            if let Some(lib_target) = pkg.targets.iter().find(|t| Self::target_is(t, "lib")) {
-                map.insert(crate_name, lib_target.src_path.clone().into_std_path_buf());
+            for pkg_id in matching_pkg_ids {
+                let Some(pkg) = self.metadata.packages.iter().find(|p| p.id == *pkg_id) else {
+                    continue;
+                };
+
+                // Skip the root package (the project being bundled).
+                if pkg.id == self.root_package.id {
+                    continue;
+                }
+
+                // Only inline deps that actually provide a library target.
+                if let Some(lib_target) = pkg.targets.iter().find(|t| Self::target_is(t, "lib")) {
+                    map.insert(
+                        crate_name.clone(),
+                        lib_target.src_path.clone().into_std_path_buf(),
+                    );
+                    break;
+                }
             }
         }
 
