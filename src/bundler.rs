@@ -72,7 +72,7 @@ impl Bundler {
     }
 
     /// Update the configuration
-    pub fn set_config(&mut self, config: TransformConfig) {
+    pub const fn set_config(&mut self, config: TransformConfig) {
         self.config = config;
     }
 }

@@ -1,7 +1,7 @@
+use cg_bundler::Bundler;
 use cg_bundler::error::BundlerError;
 use cg_bundler::file_manager::FileManager;
 use cg_bundler::transformer::{CodeTransformer, TransformConfig};
-use cg_bundler::Bundler;
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
