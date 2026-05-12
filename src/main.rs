@@ -418,11 +418,84 @@ fn format_with_rustfmt(code: &str, verbose: bool) -> Option<String> {
 }
 
 fn minify_code(code: &str) -> String {
-    code.lines()
+    // Extract string and char literals before line-joining so that newlines
+    // embedded inside string literals are not replaced with spaces.
+    let mut string_literals: Vec<String> = Vec::new();
+    let mut placeholder_index = 0usize;
+    let mut preprocessed = String::with_capacity(code.len());
+    let mut chars = code.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => {
+                let mut literal = String::from('"');
+                let mut escaped = false;
+                for inner in chars.by_ref() {
+                    literal.push(inner);
+                    if escaped {
+                        escaped = false;
+                    } else if inner == '\\' {
+                        escaped = true;
+                    } else if inner == '"' {
+                        break;
+                    }
+                }
+                let _ = write!(preprocessed, "__STRING_LITERAL_{placeholder_index}__");
+                string_literals.push(literal);
+                placeholder_index += 1;
+            }
+            '\'' => {
+                let mut literal = String::from('\'');
+                let mut found_close = false;
+                let mut escaped = false;
+                while let Some(&next) = chars.peek() {
+                    if !escaped
+                        && (next == ' '
+                            || next == ';'
+                            || next == '\n'
+                            || next == '>'
+                            || next == ','
+                            || next == ')')
+                    {
+                        break;
+                    }
+                    literal.push(next);
+                    chars.next();
+                    if escaped {
+                        escaped = false;
+                    } else if next == '\\' {
+                        escaped = true;
+                    } else if next == '\'' {
+                        found_close = true;
+                        break;
+                    }
+                }
+                if found_close {
+                    let _ = write!(preprocessed, "__STRING_LITERAL_{placeholder_index}__");
+                    string_literals.push(literal);
+                    placeholder_index += 1;
+                } else {
+                    preprocessed.push_str(&literal);
+                }
+            }
+            other => preprocessed.push(other),
+        }
+    }
+
+    let mut result = preprocessed
+        .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .collect::<Vec<&str>>()
-        .join(" ")
+        .join(" ");
+
+    // Restore string and char literals
+    for (i, literal) in string_literals.into_iter().enumerate() {
+        let placeholder = format!("__STRING_LITERAL_{i}__");
+        result = result.replace(&placeholder, &literal);
+    }
+
+    result
 }
 
 fn aggressive_minify_code(code: &str) -> String {
@@ -800,6 +873,45 @@ path = "src/lib.rs"
         let code = "fn a() {}\n\n\nfn b() {}";
         let result = minify_code(code);
         assert_eq!(result, "fn a() {} fn b() {}");
+    }
+
+    /// Regression: `minify_code` previously joined source lines with a space
+    /// without being aware of string literals, so an embedded newline inside
+    /// a multi-line string literal got silently rewritten to a space, changing
+    /// the program's runtime semantics.
+    #[test]
+    fn test_minify_code_preserves_newline_inside_string_literal() {
+        let code = "fn main() {\n    let s = \"hello\nworld\";\n    println!(\"{}\", s);\n}";
+        let result = minify_code(code);
+        // The embedded newline inside the literal must survive minification.
+        assert!(
+            result.contains("\"hello\nworld\""),
+            "newline inside string literal was clobbered: {result:?}"
+        );
+        // And outside the literal there should be no stray newlines.
+        let outside = result.replace("\"hello\nworld\"", "");
+        assert!(!outside.contains('\n'));
+    }
+
+    /// Regression: the same issue must not affect `aggressive_minify_code`
+    /// either, since it builds on top of `minify_code`.
+    #[test]
+    fn test_aggressive_minify_preserves_newline_inside_string_literal() {
+        let code = "fn main() {\n    let s = \"hello\nworld\";\n    println!(\"{}\", s);\n}";
+        let result = aggressive_minify_code(code);
+        assert!(
+            result.contains("\"hello\nworld\""),
+            "newline inside string literal was clobbered by aggressive minify: {result:?}"
+        );
+    }
+
+    /// Regression: minification must not mangle escape sequences or string
+    /// literals that contain whitespace.
+    #[test]
+    fn test_minify_code_preserves_string_with_spaces_and_escapes() {
+        let code = "fn main() {\n    let s = \"a   b\\n\\tc\";\n}";
+        let result = minify_code(code);
+        assert!(result.contains("\"a   b\\n\\tc\""), "got: {result:?}");
     }
 
     // ── format_with_rustfmt ────────────────────────────────────────────────
