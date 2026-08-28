@@ -1,4 +1,4 @@
-//! Rust Singler - A Rust code bundler for creating single-file applications
+//! CG Bundler - A Rust code bundler for creating single-file applications
 //!
 //! This library provides functionality to bundle Rust projects into single source files,
 //! combining multiple modules and dependencies into a single, self-contained file.
