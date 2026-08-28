@@ -32,20 +32,21 @@ pub fn run(cli: &Cli) -> Result<(), BundlerError> {
     let (event_rx, _watcher) = install_file_watcher(&watch_path)?;
     run_event_loop(cli, &event_rx, &shutdown_rx);
 
-    println!("{} Watch mode stopped.", "🛑".red());
+    eprintln!("{} Watch mode stopped.", "🛑".red());
     Ok(())
 }
 
 fn print_banner(cli: &Cli) {
-    println!("{} Starting watch mode...", "🔍".green());
-    println!("{} Watching directory: {}", "📁".blue(), cli.src_dir);
+    // Status goes to stderr so `--watch` without `-o` keeps stdout free for the bundle.
+    eprintln!("{} Starting watch mode...", "🔍".green());
+    eprintln!("{} Watching directory: {}", "📁".blue(), cli.src_dir);
     if let Some(output) = &cli.output {
-        println!("{} Output file: {}", "📄".blue(), output.display());
+        eprintln!("{} Output file: {}", "📄".blue(), output.display());
     } else {
-        println!("{} Output: stdout", "📄".blue());
+        eprintln!("{} Output: stdout", "📄".blue());
     }
-    println!("{} Debounce delay: {}ms", "⏱️".blue(), cli.debounce);
-    println!("{} Press Ctrl+C to stop\n", "ℹ️".yellow());
+    eprintln!("{} Debounce delay: {}ms", "⏱️".blue(), cli.debounce);
+    eprintln!("{} Press Ctrl+C to stop\n", "ℹ️".yellow());
 }
 
 fn resolve_src_dir(cli: &Cli) -> Result<PathBuf, BundlerError> {
@@ -78,7 +79,7 @@ fn perform_initial_build(cli: &Cli) {
     if let Err(e) = bundle::run(cli) {
         eprintln!("{} Initial build failed: {}", "❌".red(), e);
     } else {
-        println!("{} Initial build successful!\n", "✅".green());
+        eprintln!("{} Initial build successful!\n", "✅".green());
     }
 }
 
@@ -105,51 +106,56 @@ fn install_file_watcher(
 
 fn run_event_loop(cli: &Cli, events: &Receiver<WatchEvent>, shutdown: &Receiver<()>) {
     let debounce = Duration::from_millis(cli.debounce);
-    let mut last_event = Instant::now();
+    let mut pending: Option<(Instant, Option<String>)> = None;
 
     loop {
         if shutdown.try_recv() == Ok(()) {
-            println!("\n{} Received shutdown signal", "🛑".yellow());
+            eprintln!("\n{} Received shutdown signal", "🛑".yellow());
             break;
         }
 
-        match events.recv_timeout(Duration::from_millis(100)) {
+        match events.recv_timeout(Duration::from_millis(50)) {
             Ok(Ok(event)) => {
-                if !should_rebuild(&event) {
-                    continue;
+                if should_rebuild(&event) {
+                    // Trailing debounce: a burst of writes yields one rebuild of the
+                    // final state rather than one rebuild of the first state.
+                    pending = Some((Instant::now(), changed_file_name(&event)));
                 }
-                let now = Instant::now();
-                if now.duration_since(last_event) <= debounce {
-                    continue;
-                }
-                last_event = now;
-                announce_change(&event);
-                trigger_rebuild(cli);
             }
             Ok(Err(e)) => eprintln!("{} Watch error: {}", "⚠️".yellow(), e),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+
+        if pending
+            .as_ref()
+            .is_some_and(|(since, _)| since.elapsed() >= debounce)
+        {
+            let (_, name) = pending.take().expect("pending checked above");
+            announce_change(name.as_deref());
+            trigger_rebuild(cli);
+        }
     }
 }
 
-fn announce_change(event: &Event) {
-    if let Some(path) = event.paths.first()
-        && let Some(file_name) = path.file_name()
-    {
-        println!(
-            "{} File change detected: {}",
-            "🔄".yellow(),
-            file_name.to_string_lossy()
-        );
-        return;
+fn changed_file_name(event: &Event) -> Option<String> {
+    event
+        .paths
+        .first()
+        .and_then(|path| path.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+}
+
+fn announce_change(file_name: Option<&str>) {
+    match file_name {
+        Some(name) => eprintln!("{} File change detected: {}", "🔄".yellow(), name),
+        None => eprintln!("{} File change detected", "🔄".yellow()),
     }
-    println!("{} File change detected", "🔄".yellow());
 }
 
 fn trigger_rebuild(cli: &Cli) {
     match bundle::run(cli) {
-        Ok(()) => println!("{} Rebuild successful!\n", "✅".green()),
+        Ok(()) => eprintln!("{} Rebuild successful!\n", "✅".green()),
         Err(e) => eprintln!("{} Rebuild failed: {}\n", "❌".red(), e),
     }
 }

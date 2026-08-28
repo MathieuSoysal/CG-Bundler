@@ -1,17 +1,20 @@
 //! `--validate` command: ensure the project bundles and parses cleanly.
 
-use std::path::Path;
-
 use colored::Colorize;
 
 use cg_bundler::{Bundler, BundlerError, CargoProject};
 
-/// Run the validate command for the project at `project_path`.
+use crate::cli::Cli;
+
+/// Run the validate command for the project described by `cli`.
 ///
 /// # Errors
 /// Returns any [`BundlerError`] from project loading, bundling, or
 /// re-parsing the generated source.
-pub fn run(project_path: &Path, verbose: bool) -> Result<(), BundlerError> {
+pub fn run(cli: &Cli) -> Result<(), BundlerError> {
+    let project_path = cli.get_project_path();
+    let verbose = cli.is_verbose();
+
     if verbose {
         eprintln!(
             "{} {}",
@@ -20,12 +23,12 @@ pub fn run(project_path: &Path, verbose: bool) -> Result<(), BundlerError> {
         );
     }
 
-    let project = CargoProject::new(project_path)?;
+    let project = CargoProject::new(&project_path)?;
     if verbose {
         log_project_structure(&project);
     }
 
-    let bundler = Bundler::new();
+    let bundler = Bundler::with_config(cli.get_transform_config());
     let bundled_code = bundler.bundle_project(&project)?;
     if verbose {
         eprintln!("{}", "✓ Project can be bundled successfully".green());
@@ -71,33 +74,42 @@ fn print_help_footer() {
 mod tests {
     use super::*;
     use crate::test_support::{make_project, make_project_with_lib};
+    use clap::Parser;
     use tempfile::TempDir;
+
+    fn cli_for(path: &std::path::Path, verbose: bool) -> Cli {
+        let mut args = vec!["cg-bundler", path.to_str().unwrap(), "--validate"];
+        if verbose {
+            args.push("--verbose");
+        }
+        Cli::try_parse_from(args).unwrap()
+    }
 
     #[test]
     fn test_handle_validate_command_valid() {
         let tmp = TempDir::new().unwrap();
         make_project(tmp.path(), "fn main() {}");
-        assert!(run(tmp.path(), false).is_ok());
+        assert!(run(&cli_for(tmp.path(), false)).is_ok());
     }
 
     #[test]
     fn test_handle_validate_command_verbose() {
         let tmp = TempDir::new().unwrap();
         make_project(tmp.path(), "fn main() {}");
-        assert!(run(tmp.path(), true).is_ok());
+        assert!(run(&cli_for(tmp.path(), true)).is_ok());
     }
 
     #[test]
     fn test_handle_validate_command_verbose_with_lib() {
         let tmp = TempDir::new().unwrap();
         make_project_with_lib(tmp.path());
-        assert!(run(tmp.path(), true).is_ok());
+        assert!(run(&cli_for(tmp.path(), true)).is_ok());
     }
 
     #[test]
     fn test_handle_validate_command_invalid() {
         let tmp = TempDir::new().unwrap();
         let bad = tmp.path().join("nonexistent");
-        assert!(run(&bad, false).is_err());
+        assert!(run(&cli_for(&bad, false)).is_err());
     }
 }
