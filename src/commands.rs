@@ -18,7 +18,7 @@ use crate::cli::Cli;
 /// Propagates any [`BundlerError`] raised by the selected command.
 pub fn dispatch(cli: &Cli) -> Result<(), BundlerError> {
     if cli.validate {
-        validate::run(&cli.get_project_path(), cli.is_verbose())
+        validate::run(cli)
     } else if cli.info {
         info::run(&cli.get_project_path())
     } else if cli.watch {
