@@ -59,6 +59,10 @@ impl Bundler {
             project.external_lib_paths(),
         );
 
+        if let Some(library_path) = project.library_source_path() {
+            transformer = transformer.with_library_path(library_path);
+        }
+
         transformer.transform_file(&mut file)?;
 
         let bundled_code = prettyplease::unparse(&file);

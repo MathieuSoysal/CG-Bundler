@@ -196,7 +196,9 @@ impl CargoProject {
     /// Return a map from each direct dependency's Rust crate name to the `PathBuf`
     /// of its library entry point (`lib.rs` or equivalent).
     ///
-    /// Only dependencies that expose a library target are included.
+    /// Only *path* dependencies that expose a library target are included. Registry
+    /// dependencies are excluded: their sources rely on build scripts, `#[path]`
+    /// modules and feature-gated files that cannot be inlined into a single file.
     /// The root package itself is excluded.
     #[must_use]
     pub fn external_lib_paths(&self) -> HashMap<String, PathBuf> {
@@ -210,6 +212,10 @@ impl CargoProject {
             let crate_name = Self::dependency_crate_name(dep);
 
             for pkg in self.dependency_packages(root_node, &crate_name) {
+                if pkg.source.is_some() {
+                    continue;
+                }
+
                 if let Some(lib_target) = pkg.targets.iter().find(|t| Self::target_is(t, "lib")) {
                     map.insert(
                         crate_name.clone(),
