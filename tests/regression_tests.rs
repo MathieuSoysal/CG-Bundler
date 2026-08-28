@@ -714,3 +714,272 @@ mod minification {
         }
     }
 }
+
+mod additional_coverage {
+    use super::*;
+
+    /// Test that --keep-tests respects the configuration in detail.
+    #[test]
+    fn keep_tests_preserves_test_attributes() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("keep_test_attrs"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\nuse std::collections::HashMap;\n\n\
+                 #[cfg(test)]\nconst TEST_VALUE: i32 = 42;\n\n\
+                 fn main() { println!(\"ok\"); }\n",
+            )],
+        );
+
+        let bundled = Bundler::with_config(TransformConfig {
+            remove_tests: false,
+            ..TransformConfig::default()
+        })
+        .bundle(temp.path())
+        .expect("bundling should succeed");
+
+        assert!(bundled.contains("TEST_VALUE"), "test const must survive");
+        assert!(bundled.contains("HashMap"), "test imports must survive");
+    }
+
+    /// Test that minify with `remove_docs` removes doc comments correctly.
+    #[test]
+    fn minify_removes_doc_comments_when_configured() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("docs_removed"),
+            &[(
+                "src/main.rs",
+                "/// This doc should be removed.\n\
+                 pub fn documented() -> i32 { 42 }\n\
+                 fn main() { println!(\"{}\", documented()); }\n",
+            )],
+        );
+
+        let bundled = Bundler::with_config(TransformConfig {
+            aggressive_minify: true,
+            remove_docs: true,
+            ..TransformConfig::default()
+        })
+        .bundle(temp.path())
+        .expect("bundling should succeed");
+
+        assert!(
+            !bundled.contains("This doc should be removed"),
+            "doc comments should be removed"
+        );
+    }
+
+    /// Test edge case with multiple nested modules and dependencies.
+    #[test]
+    fn handles_deeply_nested_module_structure() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("deep_nesting"),
+            &[
+                ("src/lib.rs", "pub mod level1;\n"),
+                ("src/level1.rs", "pub mod level2;\n"),
+                ("src/level1/level2.rs", "pub fn value() -> i32 { 123 }\n"),
+                (
+                    "src/main.rs",
+                    "use deep_nesting::level1::level2;\nfn main() { println!(\"{}\", level2::value()); }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("fn value"),
+            "deeply nested functions must survive"
+        );
+    }
+
+    /// Test that test-only types are properly removed.
+    #[test]
+    fn removes_test_only_type_definitions() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("test_types"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\npub struct TestHelper;\n\n\
+                 #[cfg(test)]\npub type TestAlias = i32;\n\n\
+                 #[cfg(test)]\npub union TestUnion { a: i32 }\n\n\
+                 fn main() {}\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            !bundled.contains("TestHelper"),
+            "test struct must be removed"
+        );
+        assert!(
+            !bundled.contains("TestAlias"),
+            "test type alias must be removed"
+        );
+        assert!(!bundled.contains("TestUnion"), "test union must be removed");
+    }
+
+    /// Test that test-only macros are properly removed.
+    #[test]
+    fn removes_test_only_macro_definitions() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("test_macros"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\nmacro_rules! test_macro { () => { 42 } }\n\n\
+                 fn main() { println!(\"ok\"); }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            !bundled.contains("test_macro"),
+            "test macro must be removed"
+        );
+    }
+
+    /// Test that test-only extern crate is properly removed.
+    #[test]
+    fn removes_test_only_extern_crate() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("test_extern"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\nextern crate alloc;\n\n\
+                 fn main() { println!(\"ok\"); }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            !bundled.contains("extern crate alloc"),
+            "test extern crate must be removed"
+        );
+    }
+
+    /// Test custom library path with minification.
+    #[test]
+    fn custom_library_path_with_minification() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"custom_lib_min\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[lib]\nname = \"custom_lib_min\"\npath = \"src/library.rs\"\n",
+                "\n[[bin]]\nname = \"custom_lib_min\"\npath = \"src/main.rs\"\n",
+            ),
+            &[
+                (
+                    "src/library.rs",
+                    "pub fn compute() -> i32 { 100 + 20 + 3 }\n",
+                ),
+                (
+                    "src/main.rs",
+                    "use custom_lib_min::compute;\nfn main() { println!(\"{}\", compute()); }\n",
+                ),
+            ],
+        );
+
+        let bundled = Bundler::with_config(TransformConfig {
+            aggressive_minify: true,
+            ..TransformConfig::default()
+        })
+        .bundle(temp.path())
+        .expect("bundling should succeed");
+
+        assert!(
+            bundled.contains("fn compute"),
+            "custom lib function must survive"
+        );
+        syn::parse_file(&bundled).expect("minified custom lib bundle must be valid Rust");
+    }
+
+    /// Test that multiple features can be distinguished from test marker.
+    #[test]
+    fn distinguishes_multiple_feature_flags_from_test() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"multi_feature\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[features]\nfeature1 = []\nfeature2 = []\n",
+            ),
+            &[(
+                "src/main.rs",
+                "#[cfg(all(feature = \"feature1\", feature = \"feature2\"))]\n\
+                 fn both_features() {}\n\n\
+                 fn main() {}\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("fn both_features"),
+            "feature-gated code must survive"
+        );
+    }
+
+    /// Test error handling with Bundler API.
+    #[test]
+    fn bundler_api_handles_missing_manifest() {
+        let temp = TempDir::new().expect("temp dir");
+        let result = Bundler::default().bundle(temp.path());
+        assert!(result.is_err(), "bundling without Cargo.toml should fail");
+    }
+
+    /// Test that inlined dependencies maintain their internal structure.
+    #[test]
+    fn inlined_dependency_maintains_module_structure() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "use helper::help;\nfn main() { println!(\"{}\", help()); }\n",
+            &[],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            bundled.matches("pub mod").count() > 0,
+            "inlined modules must preserve pub mod structure"
+        );
+        assert!(
+            bundled.contains("pub fn"),
+            "inlined functions must be accessible"
+        );
+    }
+
+    fn write_workspace(root: &Path, app_main: &str, extra_app_files: &[(&str, &str)]) {
+        write_project(
+            &root.join("helper"),
+            "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            &[
+                (
+                    "src/lib.rs",
+                    "pub mod util;\npub fn help() -> i32 { crate::util::v() }\n",
+                ),
+                ("src/util.rs", "pub fn v() -> i32 { 9 }\n"),
+            ],
+        );
+
+        let mut files: Vec<(&str, &str)> = vec![("src/main.rs", app_main)];
+        files.extend_from_slice(extra_app_files);
+
+        write_project(
+            &root.join("app"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = { path = \"../helper\" }\n",
+            &files,
+        );
+    }
+}
