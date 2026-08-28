@@ -141,30 +141,105 @@ impl CodeTransformer<'_> {
     }
 
     /// Check if an item has test attributes.
+    ///
+    /// Every item kind that can carry an attribute is inspected. Restricting this
+    /// to the item kinds that *define* code is not enough: a surviving
+    /// `#[cfg(test)] use some_dep::Helper;` makes dependency detection inline the
+    /// whole of `some_dep` into a bundle that never uses it.
     #[must_use]
     pub fn has_test_attribute(item: &syn::Item) -> bool {
+        Self::item_attributes(item).is_some_and(|attrs| attrs.iter().any(Self::is_test_attribute))
+    }
+
+    /// The attributes of `item`, for every item kind that can carry them.
+    fn item_attributes(item: &syn::Item) -> Option<&[syn::Attribute]> {
         let attrs = match item {
-            syn::Item::Fn(item_fn) => &item_fn.attrs,
-            syn::Item::Mod(item_mod) => &item_mod.attrs,
-            syn::Item::Struct(item_struct) => &item_struct.attrs,
-            syn::Item::Enum(item_enum) => &item_enum.attrs,
-            syn::Item::Trait(item_trait) => &item_trait.attrs,
-            syn::Item::Impl(item_impl) => &item_impl.attrs,
-            _ => return false,
+            syn::Item::Const(inner) => &inner.attrs,
+            syn::Item::Enum(inner) => &inner.attrs,
+            syn::Item::ExternCrate(inner) => &inner.attrs,
+            syn::Item::Fn(inner) => &inner.attrs,
+            syn::Item::ForeignMod(inner) => &inner.attrs,
+            syn::Item::Impl(inner) => &inner.attrs,
+            syn::Item::Macro(inner) => &inner.attrs,
+            syn::Item::Mod(inner) => &inner.attrs,
+            syn::Item::Static(inner) => &inner.attrs,
+            syn::Item::Struct(inner) => &inner.attrs,
+            syn::Item::Trait(inner) => &inner.attrs,
+            syn::Item::TraitAlias(inner) => &inner.attrs,
+            syn::Item::Type(inner) => &inner.attrs,
+            syn::Item::Union(inner) => &inner.attrs,
+            syn::Item::Use(inner) => &inner.attrs,
+            _ => return None,
         };
 
-        attrs.iter().any(|attr| {
-            if attr.path().is_ident("test") {
-                return true;
-            }
+        Some(attrs)
+    }
 
-            if attr.path().is_ident("cfg") {
-                let attr_str = quote::quote!(#attr).to_string();
-                return attr_str.contains("test");
-            }
+    /// Whether an attribute marks an item as test-only.
+    ///
+    /// Recognises `#[test]` / `#[<path>::test]` and `cfg` predicates that require `test`
+    /// to be enabled. `#[cfg(not(test))]` and unrelated predicates such as
+    /// `#[cfg(feature = "fastest")]` are deliberately not treated as test markers.
+    #[must_use]
+    pub fn is_test_attribute(attr: &syn::Attribute) -> bool {
+        let path = attr.path();
 
-            false
-        })
+        if path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "test")
+        {
+            return true;
+        }
+
+        if path.is_ident("cfg") {
+            return attr
+                .parse_args::<syn::Meta>()
+                .is_ok_and(|meta| Self::cfg_requires_test(&meta, false));
+        }
+
+        false
+    }
+
+    /// Evaluate whether a `cfg` predicate can only hold when `test` is enabled.
+    fn cfg_requires_test(meta: &syn::Meta, negated: bool) -> bool {
+        match meta {
+            syn::Meta::Path(path) => !negated && path.is_ident("test"),
+            syn::Meta::List(list) => {
+                let is_all = list.path.is_ident("all");
+                let is_any = list.path.is_ident("any");
+                let is_not = list.path.is_ident("not");
+                if !is_all && !is_any && !is_not {
+                    return false;
+                }
+
+                let negated = if is_not { !negated } else { negated };
+
+                // `all(..)` holds only if every branch holds, so one test-only
+                // branch is enough to make the whole predicate test-only.
+                // `any(..)` holds if *some* branch holds, so it is test-only only
+                // when every branch is. Negation swaps the two (De Morgan), and
+                // `not(..)` takes a single argument either way.
+                let requires_every_branch = !is_not && (is_any != negated);
+
+                list.parse_args_with(
+                    syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+                )
+                .is_ok_and(|nested| {
+                    if requires_every_branch {
+                        !nested.is_empty()
+                            && nested
+                                .iter()
+                                .all(|inner| Self::cfg_requires_test(inner, negated))
+                    } else {
+                        nested
+                            .iter()
+                            .any(|inner| Self::cfg_requires_test(inner, negated))
+                    }
+                })
+            }
+            syn::Meta::NameValue(_) => false,
+        }
     }
 
     /// Remove documentation attributes from an item.
