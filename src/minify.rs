@@ -9,6 +9,13 @@
 //! intact. To achieve that, every literal is replaced by a placeholder
 //! before whitespace processing, and restored via a single forward scan
 //! that is robust against placeholder-collision attacks.
+//!
+//! Comments need the opposite treatment. A `//` comment runs to the end of its
+//! line, so once the lines are joined it would swallow the remainder of the
+//! file; a `/* */` comment survives the join but has its interior punctuation
+//! rewritten, which can move its terminator. Doc comments are therefore
+//! re-encoded as equivalent `#[doc = "..."]` attributes, which are immune to
+//! both, and plain comments -- which carry no meaning -- are dropped.
 
 use std::fmt::Write;
 use std::iter::Peekable;
@@ -17,6 +24,9 @@ use std::str::Chars;
 use regex::Regex;
 
 const PLACEHOLDER_MARKER: &str = "__STRING_LITERAL_";
+const AMP_SPACE_GUARD: &str = "__CGB_AMP_SPACE__";
+const SLASH_STAR_GUARD: &str = "__CGB_SLASH_STAR__";
+const LT_SPACE_GUARD: &str = "__CGB_LT_SPACE__";
 
 /// Collapse the given source code onto a single line while preserving
 /// the contents of every string and char literal verbatim.
@@ -50,18 +60,38 @@ fn collapse_whitespace_lines(text: &str) -> String {
 }
 
 fn tighten_punctuation(text: &str) -> String {
+    // `a & &b` (bitwise and of a reference) must not collapse into the logical `&&`.
+    let amp_guard = Regex::new(r"&\s+&").expect("regex is valid");
+    let guarded = amp_guard.replace_all(text, AMP_SPACE_GUARD);
+
+    // `a / *b` (division by a dereference) must not collapse into `/*`, which
+    // opens a block comment and swallows the rest of the file.
+    let slash_star_guard = Regex::new(r"/\s+\*").expect("regex is valid");
+    let guarded = slash_star_guard.replace_all(&guarded, SLASH_STAR_GUARD);
+
+    // `x < <T as Trait>::CONST` must not collapse into the shift operator `<<`.
+    // A genuine `a << b` is already written without an inner space, so it is
+    // unaffected by this guard.
+    let lt_guard = Regex::new(r"<\s+<").expect("regex is valid");
+    let guarded = lt_guard.replace_all(&guarded, LT_SPACE_GUARD);
+
     let re = Regex::new(r"\s*([=+*/%&|^<>,;:.()\[\]{}-])\s*").expect("regex is valid");
 
-    let mut result = re.replace_all(text, "$1").to_string();
+    let mut result = re.replace_all(&guarded, "$1").to_string();
     result = result
         .replace(",}", "}")
-        .replace(",)", ")")
-        .replace(",#", "#")
+        // NB: `,)` is deliberately *not* collapsed. A trailing comma before `)`
+        // is always legal, so dropping it saves a single byte -- but `(x,)` is a
+        // one-element tuple and `(x)` is a parenthesised expression, so the
+        // rewrite silently changes the meaning of the program.
         .replace(",]", "]")
         // Re-insert a space between `<` and a leading `-` so that a comparison
         // like `x < -1` does not collapse into `<-`, which is a misleading
         // (and historically reserved) Rust token sequence.
-        .replace("<-", "< -");
+        .replace("<-", "< -")
+        .replace(AMP_SPACE_GUARD, "& &")
+        .replace(SLASH_STAR_GUARD, "/ *")
+        .replace(LT_SPACE_GUARD, "< <");
     result
 }
 
@@ -75,6 +105,21 @@ fn extract_literals(code: &str) -> (String, Vec<String>) {
     let mut chars = code.chars().peekable();
 
     while let Some(ch) = chars.next() {
+        if let Some(comment) = try_consume_comment(ch, &mut chars) {
+            let (bang, text) = match comment {
+                Comment::Plain => continue,
+                Comment::Outer(text) => ("", text),
+                Comment::Inner(text) => ("!", text),
+            };
+            let _ = write!(
+                preprocessed,
+                "#{bang}[doc={PLACEHOLDER_MARKER}{placeholder_index}__]"
+            );
+            literals.push(escape_as_string_literal(&text));
+            placeholder_index += 1;
+            continue;
+        }
+
         let checkpoint = chars.clone();
         if let Some(literal) = try_extract_literal(ch, &mut chars) {
             let _ = write!(preprocessed, "{PLACEHOLDER_MARKER}{placeholder_index}__");
@@ -87,6 +132,145 @@ fn extract_literals(code: &str) -> (String, Vec<String>) {
     }
 
     (preprocessed, literals)
+}
+
+/// A comment recovered from the source.
+enum Comment {
+    /// `// ...` or `/* ... */` -- carries no meaning and is dropped.
+    Plain,
+    /// `/// ...` or `/** ... */` -- outer docs, re-encoded as `#[doc = "..."]`.
+    Outer(String),
+    /// `//! ...` or `/*! ... */` -- inner docs, re-encoded as `#![doc = "..."]`.
+    Inner(String),
+}
+
+impl Comment {
+    fn from_marker(doc_marker: Option<char>, text: String) -> Self {
+        match doc_marker {
+            Some('!') => Self::Inner(text),
+            Some(_) => Self::Outer(text),
+            None => Self::Plain,
+        }
+    }
+}
+
+/// Consume a comment starting at `first`, if there is one.
+///
+/// Neither comment form survives minification. A line comment runs to the end
+/// of its line, so after [`collapse_whitespace_lines`] joins the lines it would
+/// comment out everything that follows it. A block comment does survive the
+/// join, but [`tighten_punctuation`] rewrites the punctuation *inside* it and
+/// can move its `*/` terminator. Returning the comment here lets the caller
+/// re-encode documentation as an attribute, which is immune to both.
+fn try_consume_comment(first: char, chars: &mut Peekable<Chars<'_>>) -> Option<Comment> {
+    if first != '/' {
+        return None;
+    }
+    match chars.peek() {
+        Some('/') => {
+            chars.next();
+            Some(consume_line_comment(chars))
+        }
+        Some('*') => {
+            chars.next();
+            Some(consume_block_comment(chars))
+        }
+        _ => None,
+    }
+}
+
+/// Consume the remainder of a `//` comment; the leading `//` is already eaten.
+fn consume_line_comment(chars: &mut Peekable<Chars<'_>>) -> Comment {
+    // `///` introduces an outer doc comment and `//!` an inner one, but a
+    // fourth slash makes `////...` a plain comment again.
+    let mut doc_marker = None;
+    match chars.peek() {
+        Some('/') => {
+            chars.next();
+            if chars.peek() != Some(&'/') {
+                doc_marker = Some('/');
+            }
+        }
+        Some('!') => {
+            chars.next();
+            doc_marker = Some('!');
+        }
+        _ => {}
+    }
+
+    let mut text = String::new();
+    for ch in chars.by_ref() {
+        if ch == '\n' {
+            break;
+        }
+        text.push(ch);
+    }
+    let text = text.trim_end_matches('\r').to_owned();
+
+    Comment::from_marker(doc_marker, text)
+}
+
+/// Consume the remainder of a `/* */` comment; the leading `/*` is already
+/// eaten. Rust block comments nest, so the terminator is matched by depth.
+fn consume_block_comment(chars: &mut Peekable<Chars<'_>>) -> Comment {
+    // `/**` introduces an outer doc block and `/*!` an inner one, but the empty
+    // `/**/` is a plain comment rather than a doc block with no terminator.
+    let mut doc_marker = None;
+    match chars.peek() {
+        Some('*') => {
+            chars.next();
+            if chars.peek() == Some(&'/') {
+                chars.next();
+                return Comment::Plain;
+            }
+            doc_marker = Some('*');
+        }
+        Some('!') => {
+            chars.next();
+            doc_marker = Some('!');
+        }
+        _ => {}
+    }
+
+    let mut depth = 1usize;
+    let mut text = String::new();
+    while let Some(ch) = chars.next() {
+        if ch == '*' && chars.peek() == Some(&'/') {
+            chars.next();
+            depth -= 1;
+            if depth == 0 {
+                break;
+            }
+            text.push_str("*/");
+        } else if ch == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            depth += 1;
+            text.push_str("/*");
+        } else {
+            text.push(ch);
+        }
+    }
+
+    Comment::from_marker(doc_marker, text)
+}
+
+/// Render `text` as a Rust string literal, escaping the two characters that
+/// would otherwise terminate it or start an escape sequence.
+fn escape_as_string_literal(text: &str) -> String {
+    let mut literal = String::with_capacity(text.len() + 2);
+    literal.push('"');
+    for ch in text.chars() {
+        match ch {
+            '\\' => literal.push_str("\\\\"),
+            '"' => literal.push_str("\\\""),
+            // A block doc comment may span lines; keep the output single-line.
+            '\n' => literal.push_str("\\n"),
+            '\r' => literal.push_str("\\r"),
+            _ => literal.push(ch),
+        }
+    }
+    literal.push('"');
+    literal
 }
 
 fn try_extract_literal(first: char, chars: &mut Peekable<Chars<'_>>) -> Option<String> {
