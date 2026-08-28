@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Items guarded by `#[cfg(not(test))]` are no longer deleted from the bundle
+- `cfg` predicates that merely contain the text `test` (e.g. `feature = "fastest"`) are no longer mistaken for test markers
+- Test code nested inside inline `mod { .. }` blocks is now removed
+- `#[cfg(any(test, ...))]` items are no longer deleted: the predicate also holds
+  outside a test build, unlike `#[cfg(all(test, ...))]`
+- Test-only `use`, `const`, `static`, `type`, `union`, `macro_rules!` and
+  `extern crate` items are now stripped alongside test functions and modules. A
+  surviving `#[cfg(test)] use some_dep::X;` made dependency detection inline the
+  whole of `some_dep` into a bundle that never used it
+- Crate expansion honours a custom `[lib] path` instead of assuming `<src>/lib.rs`
+- Imports of the crate's own library from a submodule are retargeted to `crate::` instead of being left dangling
+- Path dependencies referenced only from a submodule are now inlined; previously the bundle referenced a crate that no longer existed
+- `crate::` paths inside an inlined dependency are requalified to its new module
+- Registry dependencies are no longer inlined: their sources rely on build scripts and `#[path]` modules that cannot be flattened
+- Module expansion failures are reported as errors instead of being printed as warnings while exiting successfully
+- `--m2` no longer deletes the comma separating a field or variant from a following attribute
+- `--m2` no longer collapses `a & &b` into the logical `a && b`
+- `--m2` no longer collapses `a / *b` into `/*`, which opened a block comment and
+  swallowed the rest of the bundle
+- `--m2` no longer collapses `x < <T as Trait>::CONST` into the shift operator `<<`
+- `--m2` no longer rewrites the one-element tuple `(x,)` into `(x)`; the bundle still
+  compiled but the tuple had silently become a parenthesised expression
+- Minifying with `--keep-docs` no longer emits a bundle that fails to compile: doc
+  comments are re-encoded as `#[doc = "..."]` attributes instead of `///` and
+  `/** ... */` comments. A line comment used to comment out everything after it
+  once the lines were joined, and a block comment had its interior punctuation
+  rewritten -- which could move its `*/` terminator -- and string placeholders
+  substituted inside it
+- The library no longer prints progress messages to stderr
+- `--validate` uses the requested transform options
+- `--watch` writes status messages to stderr (keeping stdout clean) and uses a trailing debounce so a burst of edits rebuilds the final state
+
+### Added
+- `CodeTransformer::with_library_path` for projects with a non-default library root
+- `tests/regression_tests.rs` covering all of the above
+
+### Removed
+- Unused dependencies: `anyhow`, `thiserror`, `walkdir`, `proptest`
+
+## [Previous Unreleased]
+
 ### Added
 - Enhanced open source best practices implementation following opensource.guide
 - Comprehensive security policy (SECURITY.md) with vulnerability reporting
