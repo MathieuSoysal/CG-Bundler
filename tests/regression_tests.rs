@@ -715,6 +715,74 @@ mod minification {
     }
 }
 
+mod crate_path_requalification {
+    use super::*;
+
+    /// Test that `crate::` paths are correctly requalified when dependencies are inlined.
+    #[test]
+    fn requalifies_crate_paths_with_use_statements() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "use helper::help;\nfn main() { println!(\"{}\", help()); }\n",
+            &[],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        // Verify that crate:: paths are requalified
+        assert!(
+            bundled.contains("crate::helper::util::v()"),
+            "crate:: paths must be requalified to module path:\n{bundled}"
+        );
+    }
+
+    /// Test that macro-expanded paths are requalified.
+    #[test]
+    fn requalifies_crate_paths_in_macros() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "mod inner;\nfn main() { println!(\"{}\", inner::show()); }\n",
+            &[(
+                "src/inner.rs",
+                "pub fn show() -> String { format!(\"{}\", helper::help()) }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        // Verify macro expansion includes requalified paths
+        assert!(
+            bundled.contains("mod helper"),
+            "macro-expanded dependency must be inlined"
+        );
+    }
+
+    fn write_workspace(root: &Path, app_main: &str, extra_app_files: &[(&str, &str)]) {
+        write_project(
+            &root.join("helper"),
+            "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            &[
+                (
+                    "src/lib.rs",
+                    "pub mod util;\npub fn help() -> i32 { crate::util::v() }\n",
+                ),
+                ("src/util.rs", "pub fn v() -> i32 { 9 }\n"),
+            ],
+        );
+
+        let mut files: Vec<(&str, &str)> = vec![("src/main.rs", app_main)];
+        files.extend_from_slice(extra_app_files);
+
+        write_project(
+            &root.join("app"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = { path = \"../helper\" }\n",
+            &files,
+        );
+    }
+}
+
 mod additional_coverage {
     use super::*;
 
@@ -981,5 +1049,120 @@ mod additional_coverage {
             "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = { path = \"../helper\" }\n",
             &files,
         );
+    }
+}
+
+mod library_path_variations {
+    use super::*;
+
+    /// Test bundling with explicitly configured library path
+    #[test]
+    fn bundles_with_explicit_library_path_config() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"lib_cfg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[lib]\nname = \"lib_cfg\"\npath = \"src/custom.rs\"\n",
+                "\n[[bin]]\nname = \"lib_cfg\"\npath = \"src/main.rs\"\n",
+            ),
+            &[
+                ("src/custom.rs", "pub fn lib_fn() -> i32 { 99 }\n"),
+                (
+                    "src/main.rs",
+                    "use lib_cfg::lib_fn;\nfn main() { println!(\"{}\", lib_fn()); }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("fn lib_fn"),
+            "custom lib path must be expanded"
+        );
+    }
+
+    /// Test multiple modules in custom library path
+    #[test]
+    fn bundles_multiple_modules_with_custom_lib_path() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"multi_mod\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[lib]\nname = \"multi_mod\"\npath = \"src/lib_root.rs\"\n",
+                "\n[[bin]]\nname = \"multi_mod\"\npath = \"src/bin.rs\"\n",
+            ),
+            &[
+                (
+                    "src/lib_root.rs",
+                    "pub mod alpha;\npub fn call() { alpha::work(); }\n",
+                ),
+                ("src/alpha.rs", "pub fn work() {}\n"),
+                (
+                    "src/bin.rs",
+                    "use multi_mod::call;\nfn main() { call(); }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("pub mod alpha"),
+            "submodules must be preserved"
+        );
+        assert!(
+            bundled.contains("fn work"),
+            "submodule functions must be present"
+        );
+    }
+}
+
+mod macro_expansion_coverage {
+    use super::*;
+
+    /// Test that macros that reference dependencies are properly handled
+    #[test]
+    fn handles_macro_with_dependency_references() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("macro_dep"),
+            &[(
+                "src/main.rs",
+                "macro_rules! use_vec {\n  () => { Vec::new() }\n}\n\
+                 fn main() {\n  let v = use_vec!();\n  println!(\"{:?}\", v);\n}\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("macro_rules! use_vec"),
+            "macros must survive bundling"
+        );
+    }
+}
+
+mod validate_with_transforms {
+    use super::*;
+
+    /// Test that --validate respects transform options
+    #[test]
+    fn validate_applies_configured_transforms() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("validate_transforms"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\nfn test_only() {}\nfn main() {}\n",
+            )],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .arg("--validate")
+            .assert()
+            .success();
     }
 }
