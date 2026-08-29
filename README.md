@@ -23,14 +23,19 @@
 _With cargo :_
 ```bash
 cargo install cg-bundler
-cg-bundler > output.rs
+cg-bundler -o output.rs
 ```
+
+> Prefer `-o output.rs` over `> output.rs`. The shell truncates a redirect
+> target *before* the bundler runs, so a build that fails leaves you with an
+> empty file and your last working bundle gone. With `-o`, the file is written
+> only after bundling succeeds.
 
 _Without cargo_ — download the binary for your platform, make it executable, and run it:
 ```bash
 curl -L https://github.com/MathieuSoysal/cg-bundler/releases/latest/download/cg-bundler-linux-amd64 -o cg-bundler
 chmod +x cg-bundler
-./cg-bundler > output.rs
+./cg-bundler -o output.rs
 ```
 
 Replace `cg-bundler-linux-amd64` with the build for your platform:

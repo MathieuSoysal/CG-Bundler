@@ -92,7 +92,7 @@ fn write_output(
         if io::stdout().is_terminal() {
             eprintln!(
                 "{}",
-                "Tip: that was the bundle on stdout. Use -o <FILE>, or redirect: cg-bundler > output.rs"
+                "Tip: that was the bundle on stdout. Use `-o <FILE>` to save it -- a redirect such as `> out.rs` is emptied before bundling, so a failed run destroys the previous one."
                     .yellow()
             );
         }
