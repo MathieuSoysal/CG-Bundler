@@ -22,16 +22,18 @@ pub fn report(error: &BundlerError) {
 
 /// Whether `error` describes something in the user's project rather than a
 /// defect in the bundler.
-const fn is_user_error(error: &BundlerError) -> bool {
-    matches!(
-        error,
+fn is_user_error(error: &BundlerError) -> bool {
+    match error {
         BundlerError::CargoMetadata { .. }
-            | BundlerError::Parsing { .. }
-            | BundlerError::ProjectStructure { .. }
-            | BundlerError::MultipleBinaryTargets { .. }
-            | BundlerError::NoBinaryTarget
-            | BundlerError::MultipleLibraryTargets { .. }
-    )
+        | BundlerError::Parsing { .. }
+        | BundlerError::ProjectStructure { .. }
+        | BundlerError::MultipleBinaryTargets { .. }
+        | BundlerError::NoBinaryTarget
+        | BundlerError::MultipleLibraryTargets { .. } => true,
+        // Something the user pointed at is missing -- a mistyped `--src-dir`,
+        // say. Other IO faults are unexpected and stay worth reporting.
+        BundlerError::Io { source, .. } => source.kind() == std::io::ErrorKind::NotFound,
+    }
 }
 
 /// Point at the issue tracker without claiming the tool misbehaved.
@@ -99,6 +101,15 @@ mod tests {
     fn io_failures_still_invite_a_bug_report() {
         assert!(!is_user_error(&BundlerError::Io {
             source: std::io::Error::other("disk on fire"),
+            path: None,
+        }));
+    }
+
+    /// A path the user named that simply is not there is their situation.
+    #[test]
+    fn a_missing_path_is_not_a_bundler_bug() {
+        assert!(is_user_error(&BundlerError::Io {
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "no such directory"),
             path: None,
         }));
     }
