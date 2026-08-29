@@ -14,7 +14,6 @@ mod rustfmt_fmt;
 mod test_support;
 
 use clap::Parser;
-use colored::Colorize;
 use std::process;
 
 use cli::Cli;
@@ -23,8 +22,7 @@ fn main() {
     let cli = Cli::parse();
 
     if let Err(e) = commands::dispatch(&cli) {
-        eprintln!("{} {}", "Error:".red().bold(), e);
-        diagnostics::display_bug_report_info();
+        diagnostics::report(&e);
         process::exit(1);
     }
 }
