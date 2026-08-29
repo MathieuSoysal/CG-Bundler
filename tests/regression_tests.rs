@@ -1329,3 +1329,133 @@ mod validate_with_transforms {
             .success();
     }
 }
+
+mod usability {
+    use super::*;
+    use std::process::{Command, Stdio};
+
+    /// Every other cargo command searches parent directories; this one used to
+    /// demand that you stand in the project root.
+    #[test]
+    fn bundles_from_a_nested_subdirectory() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("nested"),
+            &[
+                ("src/main.rs", "mod deep;\nfn main() { deep::go(); }\n"),
+                ("src/deep/mod.rs", "pub fn go() { println!(\"ok\"); }\n"),
+            ],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path().join("src/deep"))
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("fn go"));
+    }
+
+    /// A workspace root has no single package to bundle. Saying so, and naming
+    /// the members, beats reporting that metadata is missing.
+    #[test]
+    fn workspace_root_names_its_members() {
+        let temp = TempDir::new().expect("temp dir");
+        fs::write(
+            temp.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"puzzle1\", \"puzzle2\"]\nresolver = \"2\"\n",
+        )
+        .expect("write workspace manifest");
+        for member in ["puzzle1", "puzzle2"] {
+            write_project(
+                &temp.path().join(member),
+                &simple_manifest(member),
+                &[("src/main.rs", "fn main() {}\n")],
+            );
+        }
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("is a workspace"))
+            .stderr(predicate::str::contains("cg-bundler puzzle1"))
+            .stderr(predicate::str::contains("cg-bundler puzzle2"));
+    }
+
+    /// The most likely first-run mistake deserves a message about directories,
+    /// not about `cargo metadata`.
+    #[test]
+    fn missing_manifest_explains_itself() {
+        let temp = TempDir::new().expect("temp dir");
+        fs::write(temp.path().join("README.md"), "not a crate").expect("write file");
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("no Cargo.toml"))
+            .stderr(predicate::str::contains("or any parent directory"));
+    }
+
+    /// A problem in the user's own code is not a bug in the bundler, so it is
+    /// not dressed up as one. The link stays reachable; the "found a bug?"
+    /// framing does not.
+    #[test]
+    fn project_errors_are_not_framed_as_bundler_bugs() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("syntax_error"),
+            &[("src/main.rs", "fn main() { let x = ; }\n")],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Parsing error"))
+            .stderr(predicate::str::contains("Questions or feedback"))
+            .stderr(predicate::str::contains("💡 Need help or found a bug?").not())
+            .stderr(predicate::str::contains("Your feedback helps improve").not());
+    }
+
+    /// `cg-bundler | head` closes the pipe early. That is ordinary shell usage,
+    /// not a crash.
+    #[test]
+    fn a_closed_stdout_pipe_is_not_a_panic() {
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("test_project");
+
+        let mut child = Command::new(cargo_bin_path())
+            .arg(&project)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn cg-bundler");
+
+        // Close the read end while the bundle is still being written.
+        drop(child.stdout.take().expect("stdout is piped"));
+
+        let output = child.wait_with_output().expect("wait for cg-bundler");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(
+            !stderr.contains("panicked"),
+            "a closed pipe must not panic:\n{stderr}"
+        );
+        assert_ne!(
+            output.status.code(),
+            Some(101),
+            "exited as a panic: {stderr}"
+        );
+    }
+
+    fn cargo_bin_path() -> std::path::PathBuf {
+        // The integration test binary lives next to the built CLI.
+        let mut path = std::env::current_exe().expect("test binary path");
+        path.pop();
+        if path.ends_with("deps") {
+            path.pop();
+        }
+        path.join(format!("cg-bundler{}", std::env::consts::EXE_SUFFIX))
+    }
+}
