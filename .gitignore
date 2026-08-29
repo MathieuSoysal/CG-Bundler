@@ -1,2 +1,10 @@
-/target
+# Build output. Unanchored so the sample projects under test_project/ and
+# examples/ are covered too, not just the workspace root.
+target/
+
+# Coverage reports: `cargo llvm-cov --html` writes coverage/, and the CI
+# invocation writes lcov.info. Both are regenerated on demand.
+coverage/
+lcov.info
+
 .vscode
