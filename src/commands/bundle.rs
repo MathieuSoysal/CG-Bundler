@@ -1,6 +1,7 @@
 //! Default `bundle` command: produce a single-file Rust source from a Cargo project.
 
 use std::fs;
+use std::io::{self, IsTerminal as _, Write as _};
 use std::path::Path;
 
 use colored::Colorize;
@@ -68,12 +69,12 @@ fn post_process(code: String, cli: &Cli) -> String {
             eprintln!("{}", "Formatting with rustfmt...".yellow());
         }
         return format_with_rustfmt(&code, verbose).unwrap_or_else(|| {
-            if verbose {
-                eprintln!(
-                    "{}",
-                    "Warning: rustfmt formatting failed, using unformatted output".yellow()
-                );
-            }
+            // Silently ignoring --pretty makes the flag look broken; say so once.
+            eprintln!(
+                "{}",
+                "Warning: --pretty needs rustfmt, which is unavailable or failed here; emitting unformatted output. Install it with `rustup component add rustfmt`."
+                    .yellow()
+            );
             code
         });
     }
@@ -86,22 +87,52 @@ fn write_output(
     output: Option<&std::path::PathBuf>,
     verbose: bool,
 ) -> Result<(), BundlerError> {
-    match output {
-        Some(path) => {
-            if verbose {
-                eprintln!("{} {}", "Writing to file:".green(), path.display());
-            }
-            fs::write(path, code).map_err(|e| BundlerError::Io {
-                source: e,
-                path: Some(path.clone()),
-            })?;
-            if verbose {
-                print_completion_banner();
-            }
+    let Some(path) = output else {
+        write_stdout(code)?;
+        if io::stdout().is_terminal() {
+            eprintln!(
+                "{}",
+                "Tip: that was the bundle on stdout. Use -o <FILE>, or redirect: cg-bundler > output.rs"
+                    .yellow()
+            );
         }
-        None => print!("{code}"),
+        return Ok(());
+    };
+
+    if verbose {
+        eprintln!("{} {}", "Writing to file:".green(), path.display());
     }
+    fs::write(path, code).map_err(|e| BundlerError::Io {
+        source: e,
+        path: Some(path.clone()),
+    })?;
+    if verbose {
+        print_completion_banner();
+    }
+
     Ok(())
+}
+
+/// Write the bundle to stdout.
+///
+/// A consumer that stops reading -- `cg-bundler | head`, or quitting `less`
+/// early -- closes the pipe, which is an ordinary way to end a shell pipeline
+/// rather than a failure. `print!` turns that into a panic, so write explicitly
+/// and treat a broken pipe as success.
+fn write_stdout(code: &str) -> Result<(), BundlerError> {
+    let mut stdout = io::stdout().lock();
+
+    match stdout
+        .write_all(code.as_bytes())
+        .and_then(|()| stdout.flush())
+    {
+        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(e) => Err(BundlerError::Io {
+            source: e,
+            path: None,
+        }),
+        Ok(()) => Ok(()),
+    }
 }
 
 fn print_completion_banner() {
