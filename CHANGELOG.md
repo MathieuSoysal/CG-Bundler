@@ -67,6 +67,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unexpected failures
 - `--pretty` warns when `rustfmt` is unavailable instead of silently emitting
   unformatted output
+- `--src-dir` is resolved against the project root, so `--watch` works from a
+  subdirectory just as bundling does
+- A path that is simply missing is no longer reported as a bug in the bundler
+- README: `-o output.rs` replaces `> output.rs` as the documented command. A shell
+  redirect truncates its target before the bundler runs, so a failed build left an
+  empty file and destroyed the previous bundle
 - Writing the bundle to a terminal adds a one-line hint about `-o` and redirection;
   redirected and piped output is unchanged
 
