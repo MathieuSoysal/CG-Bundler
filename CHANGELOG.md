@@ -49,7 +49,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an error instead of silently resolving every such path to the wrong code
 - `--watch` no longer rebuilds forever when `-o` writes inside the watched directory:
   the bundle's own output is not treated as a source change
+- `cg-bundler | head` no longer panics with a broken-pipe error: a consumer that
+  stops reading ends the pipeline normally
+- A path that does not exist is reported as such, instead of being resolved against
+  a parent directory and bundling an unrelated project
+- README: the download instructions were missing `chmod +x` and ran the binary via
+  `bash`, which cannot execute it; all five published platform builds are now listed
 - `--watch` writes status messages to stderr (keeping stdout clean) and uses a trailing debounce so a burst of edits rebuilds the final state
+
+### Changed
+- `cg-bundler` now searches parent directories for `Cargo.toml`, so it runs from
+  anywhere inside a project rather than only from its root
+- Pointing it at a workspace root names the members to bundle instead of reporting
+  that a root package is missing
+- A problem in the user's own project is no longer presented as a bug in the bundler.
+  The issue-tracker link stays, but the "found a bug?" banner is now reserved for
+  unexpected failures
+- `--pretty` warns when `rustfmt` is unavailable instead of silently emitting
+  unformatted output
+- Writing the bundle to a terminal adds a one-line hint about `-o` and redirection;
+  redirected and piped output is unchanged
 
 ### Added
 - `CodeTransformer::with_library_path` for projects with a non-default library root
