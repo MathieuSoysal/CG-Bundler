@@ -4,7 +4,7 @@
 //! `visit_path_mut` traversal never reaches paths written inside `println!`,
 //! `vec!`, `write!` and friends. These helpers walk the token stream directly.
 
-use proc_macro2::{Group, Ident, Spacing, TokenStream, TokenTree};
+use proc_macro2::{Group, Ident, Punct, Spacing, TokenStream, TokenTree};
 
 /// How a matched crate-root identifier should be rewritten.
 pub(super) enum RootRewrite<'a> {
@@ -36,8 +36,7 @@ pub(super) fn rewrite_root_in_tokens(
     rewrite: &RootRewrite<'_>,
 ) -> TokenStream {
     let trees: Vec<TokenTree> = tokens.into_iter().collect();
-    let mut out = TokenStream::new();
-    let mut previous_was_colon = false;
+    let mut out: Vec<TokenTree> = Vec::with_capacity(trees.len());
     let mut index = 0;
 
     while index < trees.len() {
@@ -48,54 +47,81 @@ pub(super) fn rewrite_root_in_tokens(
                     rewrite_root_in_tokens(group.stream(), root, rewrite),
                 );
                 rebuilt.set_span(group.span());
-                out.extend([TokenTree::Group(rebuilt)]);
-                previous_was_colon = false;
+                out.push(TokenTree::Group(rebuilt));
                 index += 1;
             }
-            // A leading `::` means the path is already anchored elsewhere.
             TokenTree::Ident(ident)
-                if !previous_was_colon && ident == root && is_path_sep_at(&trees, index + 1) =>
+                if ident == root
+                    && is_path_sep_at(&trees, index + 1)
+                    && !continues_longer_path(&trees, index) =>
             {
+                // `::<root>::..` names the crate through the extern prelude. The
+                // bundle has relocated it, so the anchor has to go with it.
+                if is_path_sep_at(&trees, index.wrapping_sub(2)) {
+                    out.pop();
+                    out.pop();
+                }
+
                 let span = ident.span();
                 match rewrite {
                     RootRewrite::Strip => index += 3,
                     RootRewrite::Rename => {
-                        out.extend([TokenTree::Ident(Ident::new("crate", span))]);
+                        out.push(TokenTree::Ident(Ident::new("crate", span)));
                         index += 1;
                     }
                     RootRewrite::Qualify(module) => {
-                        out.extend([
-                            TokenTree::Ident(ident.clone()),
-                            trees[index + 1].clone(),
-                            trees[index + 2].clone(),
-                            TokenTree::Ident(Ident::new(module, span)),
-                            trees[index + 1].clone(),
-                            trees[index + 2].clone(),
-                        ]);
+                        out.push(TokenTree::Ident(ident.clone()));
+                        out.extend(path_sep(span));
+                        out.push(TokenTree::Ident(Ident::new(module, span)));
+                        out.extend(path_sep(span));
                         index += 3;
                     }
                     RootRewrite::PrefixCrate => {
-                        out.extend([
-                            TokenTree::Ident(Ident::new("crate", span)),
-                            trees[index + 1].clone(),
-                            trees[index + 2].clone(),
-                            TokenTree::Ident(ident.clone()),
-                        ]);
+                        out.push(TokenTree::Ident(Ident::new("crate", span)));
+                        out.extend(path_sep(span));
+                        out.push(TokenTree::Ident(ident.clone()));
                         index += 1;
                     }
                 }
-                previous_was_colon = false;
             }
             other => {
-                previous_was_colon =
-                    matches!(other, TokenTree::Punct(punct) if punct.as_char() == ':');
-                out.extend([other.clone()]);
+                out.push(other.clone());
                 index += 1;
             }
         }
     }
 
-    out
+    out.into_iter().collect()
+}
+
+/// A freshly built `::`, spanned at `span`.
+fn path_sep(span: proc_macro2::Span) -> [TokenTree; 2] {
+    let mut first = Punct::new(':', Spacing::Joint);
+    first.set_span(span);
+    let mut second = Punct::new(':', Spacing::Alone);
+    second.set_span(span);
+
+    [TokenTree::Punct(first), TokenTree::Punct(second)]
+}
+
+/// Whether the identifier at `index` merely continues a longer path, as the
+/// `root` in `foo::root::X` does.
+///
+/// Only a `::` that itself follows a path segment counts. A *leading* `::`, as
+/// in `::root::X`, does not: that anchors the path at the extern prelude, which
+/// is exactly where the crate being inlined used to live.
+fn continues_longer_path(trees: &[TokenTree], index: usize) -> bool {
+    if !is_path_sep_at(trees, index.wrapping_sub(2)) {
+        return false;
+    }
+
+    matches!(
+        trees.get(index.wrapping_sub(3)),
+        Some(TokenTree::Ident(_) | TokenTree::Group(_))
+    ) || matches!(
+        trees.get(index.wrapping_sub(3)),
+        Some(TokenTree::Punct(punct)) if punct.as_char() == '>'
+    )
 }
 
 fn is_path_sep_at(trees: &[TokenTree], index: usize) -> bool {
