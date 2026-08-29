@@ -44,6 +44,7 @@ impl VisitMut for CodeTransformer<'_> {
         let mut child = self.child(&child_base);
 
         if let Some((_, items)) = item.content.as_mut() {
+            child.shadowed_roots = CodeTransformer::scope_names(items);
             if let Err(e) = child.expand_items(items) {
                 child.record_error(e);
             } else {
@@ -83,7 +84,11 @@ impl VisitMut for CodeTransformer<'_> {
 
         if !self.is_root {
             // Dependencies are inlined as `mod <name>` at the bundle root.
-            let mut names: Vec<&String> = self.external_libs.keys().collect();
+            let mut names: Vec<&String> = self
+                .external_libs
+                .keys()
+                .filter(|name| !self.shadowed_roots.contains(*name))
+                .collect();
             names.sort_unstable();
             for name in names {
                 tokens = rewrite_root_in_tokens(tokens, name, &RootRewrite::PrefixCrate);

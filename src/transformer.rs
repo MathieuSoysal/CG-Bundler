@@ -44,6 +44,9 @@ pub struct CodeTransformer<'a> {
     pub(super) library_path: Option<&'a Path>,
     /// `false` for transformers operating inside a nested module of the bundle.
     pub(super) is_root: bool,
+    /// Names declared by the module currently being rewritten. A dependency whose
+    /// name appears here is shadowed and must not be retargeted at the bundle root.
+    pub(super) shadowed_roots: Vec<String>,
     /// First error encountered while visiting the AST, surfaced by `transform_file`.
     pub(super) error: Option<BundlerError>,
 }
@@ -70,6 +73,7 @@ impl<'a> CodeTransformer<'a> {
             external_libs,
             library_path: None,
             is_root: true,
+            shadowed_roots: Vec::new(),
             error: None,
         }
     }
@@ -96,6 +100,8 @@ impl<'a> CodeTransformer<'a> {
             external_libs: self.external_libs.clone(),
             library_path: self.library_path,
             is_root: false,
+            // Rust module scopes do not nest for path roots, so a child starts empty.
+            shadowed_roots: Vec::new(),
             error: None,
         }
     }
