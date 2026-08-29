@@ -333,7 +333,7 @@ impl CodeTransformer<'_> {
             if path.ident == self.crate_name {
                 item_use.leading_colon = None;
                 path.ident = syn::Ident::new("crate", path.ident.span());
-            } else if self.external_libs.contains_key(&path.ident.to_string()) {
+            } else if self.inlines_dependency(&path.ident) {
                 let span = path.ident.span();
                 item_use.leading_colon = None;
                 let inner = mem::replace(
@@ -366,6 +366,7 @@ impl CodeTransformer<'_> {
         })?;
 
         let mut expander = self.child(&base_path);
+        expander.shadowed_roots = Self::scope_names(&file.items);
         expander.expand_items(&mut file.items)?;
 
         for item in &mut file.items {
@@ -410,7 +411,7 @@ impl CodeTransformer<'_> {
         // Dependencies are inlined as `mod <name>` at the bundle root.
         if !self.is_root
             && let Some(first) = path.segments.first()
-            && self.external_libs.contains_key(&first.ident.to_string())
+            && self.inlines_dependency(&first.ident)
         {
             let span = first.ident.span();
             path.leading_colon = None;
@@ -419,6 +420,49 @@ impl CodeTransformer<'_> {
                 .push(syn::PathSegment::from(syn::Ident::new("crate", span)));
             path.segments.extend(tail.into_pairs());
         }
+    }
+
+    /// The names a module's own items bring into its scope as path roots.
+    ///
+    /// A `mod x` declares `x`; a `use a::b::x` (or `use a::b as x`) binds `x`. Both
+    /// take precedence over a same-named crate from the extern prelude.
+    pub(super) fn scope_names(items: &[syn::Item]) -> Vec<String> {
+        let mut names = Vec::new();
+
+        for item in items {
+            match item {
+                syn::Item::Mod(item_mod) => names.push(item_mod.ident.to_string()),
+                syn::Item::Use(item_use) => Self::collect_use_names(&item_use.tree, &mut names),
+                _ => {}
+            }
+        }
+
+        names
+    }
+
+    /// Collect the names a use tree binds in the enclosing scope.
+    fn collect_use_names(tree: &syn::UseTree, names: &mut Vec<String>) {
+        match tree {
+            syn::UseTree::Path(path) => Self::collect_use_names(&path.tree, names),
+            syn::UseTree::Name(name) => names.push(name.ident.to_string()),
+            syn::UseTree::Rename(rename) => names.push(rename.rename.to_string()),
+            syn::UseTree::Group(group) => {
+                for nested in &group.items {
+                    Self::collect_use_names(nested, names);
+                }
+            }
+            syn::UseTree::Glob(_) => {}
+        }
+    }
+
+    /// Whether `ident` names a dependency that this bundle inlines *and* that is
+    /// not shadowed by an item declared in the module currently being rewritten.
+    ///
+    /// Without the shadowing check a local `mod serde` inside a module would have
+    /// its own references retargeted at the inlined `crate::serde` dependency.
+    pub(super) fn inlines_dependency(&self, ident: &syn::Ident) -> bool {
+        let name = ident.to_string();
+        self.external_libs.contains_key(&name) && !self.shadowed_roots.contains(&name)
     }
 
     /// Check if item is an extern crate declaration.
