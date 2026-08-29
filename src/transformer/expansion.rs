@@ -9,22 +9,111 @@ use crate::error::{BundlerError, Result};
 use crate::file_manager::FileManager;
 
 use super::CodeTransformer;
+use super::macro_paths::{RootRewrite, rewrite_root_in_tokens, tokens_reference_root};
 
 struct PathRootVisitor<'a> {
     crate_name: &'a str,
     found: bool,
 }
 
+impl PathRootVisitor<'_> {
+    /// Matches both `<crate>::..` and the already-requalified `crate::<crate>::..`.
+    fn matches(&self, path: &syn::Path) -> bool {
+        let mut segments = path.segments.iter();
+        let Some(first) = segments.next() else {
+            return false;
+        };
+
+        if first.ident == self.crate_name {
+            return true;
+        }
+
+        first.ident == "crate"
+            && segments
+                .next()
+                .is_some_and(|second| second.ident == self.crate_name)
+    }
+}
+
 impl<'ast> Visit<'ast> for PathRootVisitor<'_> {
     fn visit_path(&mut self, path: &'ast syn::Path) {
-        if let Some(first) = path.segments.first()
-            && first.ident == self.crate_name
-        {
+        if self.matches(path) {
             self.found = true;
             return;
         }
 
         syn::visit::visit_path(self, path);
+    }
+
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) {
+        if tokens_reference_root(&mac.tokens, self.crate_name) {
+            self.found = true;
+            return;
+        }
+
+        syn::visit::visit_macro(self, mac);
+    }
+}
+
+/// Rewrites `crate::..` to `crate::<module>::..` for code being moved into `mod <module>`.
+struct CrateRootRequalifier<'a> {
+    module: &'a str,
+}
+
+impl CrateRootRequalifier<'_> {
+    fn requalify(&self, path: &mut syn::Path) {
+        let Some(first) = path.segments.first() else {
+            return;
+        };
+        if first.ident != "crate" {
+            return;
+        }
+
+        let span = first.ident.span();
+        let tail = mem::replace(&mut path.segments, Punctuated::new());
+        path.segments
+            .push(syn::PathSegment::from(syn::Ident::new("crate", span)));
+        path.segments
+            .push(syn::PathSegment::from(syn::Ident::new(self.module, span)));
+        path.segments.extend(tail.into_pairs().skip(1));
+    }
+}
+
+impl VisitMut for CrateRootRequalifier<'_> {
+    fn visit_path_mut(&mut self, path: &mut syn::Path) {
+        self.requalify(path);
+        for mut pair in Punctuated::pairs_mut(&mut path.segments) {
+            self.visit_path_segment_mut(pair.value_mut());
+        }
+    }
+
+    fn visit_macro_mut(&mut self, mac: &mut syn::Macro) {
+        self.visit_path_mut(&mut mac.path);
+
+        let tokens = mem::take(&mut mac.tokens);
+        mac.tokens = rewrite_root_in_tokens(tokens, "crate", &RootRewrite::Qualify(self.module));
+    }
+
+    fn visit_use_tree_mut(&mut self, tree: &mut syn::UseTree) {
+        if let syn::UseTree::Path(path) = tree
+            && path.ident == "crate"
+        {
+            let span = path.ident.span();
+            let rest = mem::replace(
+                path.tree.as_mut(),
+                syn::UseTree::Glob(syn::UseGlob {
+                    star_token: syn::token::Star::default(),
+                }),
+            );
+            *path.tree = syn::UseTree::Path(syn::UsePath {
+                ident: syn::Ident::new(self.module, span),
+                colon2_token: syn::token::PathSep::default(),
+                tree: Box::new(rest),
+            });
+            return;
+        }
+
+        syn::visit_mut::visit_use_tree_mut(self, tree);
     }
 }
 
@@ -36,11 +125,7 @@ impl CodeTransformer<'_> {
         let mut to_expand: Vec<(String, PathBuf)> = self
             .external_libs
             .iter()
-            .filter(|(name, _)| {
-                items.iter().any(|item| {
-                    Self::is_use_path(item, name) || Self::item_references_crate(item, name)
-                })
-            })
+            .filter(|(name, _)| Self::items_reference_crate(items, name))
             .map(|(name, path)| (name.clone(), path.clone()))
             .collect();
 
@@ -61,7 +146,16 @@ impl CodeTransformer<'_> {
         ext_lib_path: &Path,
     ) -> Result<()> {
         if Self::has_module_named(items, ext_name) {
-            return Ok(());
+            // Inlining would put the dependency where the crate's own module already
+            // lives, and every `<ext_name>::..` path retargeted at it would silently
+            // resolve to the wrong code. rustc rejects the same ambiguity (E0659).
+            return Err(BundlerError::ProjectStructure {
+                message: format!(
+                    "Dependency '{ext_name}' collides with a module of the same name \
+                     defined by this crate. Rename one of them, or import the module \
+                     through `crate::{ext_name}` so the reference is unambiguous."
+                ),
+            });
         }
 
         let code =
@@ -86,10 +180,15 @@ impl CodeTransformer<'_> {
                     ),
                 })?;
 
-        let mut expander = CodeTransformer::new(ext_base_path, ext_name, self.config.clone());
-        expander.expand_items(&mut lib_file.items)?;
+        let mut expander = CodeTransformer::new(ext_base_path, ext_name, self.config.clone())
+            .with_library_path(ext_lib_path);
+        expander.transform_file(&mut lib_file)?;
+
+        // The dependency now lives under `mod <ext_name>`, so its own `crate::` paths
+        // must be requalified to reach it.
+        let mut requalifier = CrateRootRequalifier { module: ext_name };
         for item in &mut lib_file.items {
-            expander.visit_item_mut(item);
+            requalifier.visit_item_mut(item);
         }
 
         let mod_item = syn::Item::Mod(syn::ItemMod {
@@ -116,6 +215,43 @@ impl CodeTransformer<'_> {
         })
     }
 
+    /// Whether any item — including items nested in inline modules — refers to `crate_name`.
+    fn items_reference_crate(items: &[syn::Item], crate_name: &str) -> bool {
+        items.iter().any(|item| {
+            if let syn::Item::Use(item_use) = item
+                && Self::use_tree_targets_crate(&item_use.tree, crate_name)
+            {
+                return true;
+            }
+
+            if Self::item_references_crate(item, crate_name) {
+                return true;
+            }
+
+            if let syn::Item::Mod(item_mod) = item
+                && let Some((_, inner)) = item_mod.content.as_ref()
+            {
+                return Self::items_reference_crate(inner, crate_name);
+            }
+
+            false
+        })
+    }
+
+    /// Matches `use <crate>::..` as well as the requalified `use crate::<crate>::..`.
+    fn use_tree_targets_crate(tree: &syn::UseTree, crate_name: &str) -> bool {
+        if Self::use_tree_references_crate(tree, crate_name) {
+            return true;
+        }
+
+        match tree {
+            syn::UseTree::Path(path) if path.ident == "crate" => {
+                Self::use_tree_references_crate(&path.tree, crate_name)
+            }
+            _ => false,
+        }
+    }
+
     fn item_references_crate(item: &syn::Item, crate_name: &str) -> bool {
         let mut visitor = PathRootVisitor {
             crate_name,
@@ -127,27 +263,16 @@ impl CodeTransformer<'_> {
 
     /// Expand extern crate declarations.
     pub(super) fn expand_extern_crate(&self, items: &mut Vec<syn::Item>) -> Result<()> {
+        let lib_items = self.read_library_items()?;
         let mut new_items = vec![];
+        let mut library_expanded = false;
+
         for item in items.drain(..) {
             if Self::is_extern_crate(&item, self.crate_name) {
-                eprintln!(
-                    "Expanding crate {} in {}",
-                    self.crate_name,
-                    self.base_path.display()
-                );
-                let lib_path = self.base_path.join("lib.rs");
-                let code = FileManager::read_file(&lib_path).map_err(|_| {
-                    BundlerError::ProjectStructure {
-                        message: "Failed to read lib.rs for extern crate expansion".to_string(),
-                    }
-                })?;
-
-                let lib = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
-                    message: format!("Failed to parse lib.rs: {e}"),
-                    file_path: Some(lib_path),
-                })?;
-
-                new_items.extend(lib.items);
+                if !library_expanded {
+                    new_items.extend(lib_items.iter().cloned());
+                    library_expanded = true;
+                }
             } else {
                 new_items.push(item);
             }
@@ -158,41 +283,19 @@ impl CodeTransformer<'_> {
 
     /// Remove use paths without expanding library (used when extern crate is present).
     pub(super) fn remove_use_paths(&self, items: &mut Vec<syn::Item>) {
-        let mut new_items = vec![];
-        for item in items.drain(..) {
-            if !Self::is_use_path(&item, self.crate_name) {
-                new_items.push(item);
-            }
-        }
-        *items = new_items;
+        items.retain(|item| !Self::is_use_path(item, self.crate_name));
     }
 
     /// Expand use paths.
     pub(super) fn expand_use_path(&self, items: &mut Vec<syn::Item>) -> Result<()> {
+        let lib_items = self.read_library_items()?;
         let mut new_items = vec![];
         let mut library_expanded = false;
 
         for item in items.drain(..) {
             if Self::is_use_path(&item, self.crate_name) {
                 if !library_expanded {
-                    eprintln!(
-                        "Expanding crate {} in {} (from use statement)",
-                        self.crate_name,
-                        self.base_path.display()
-                    );
-                    let lib_path = self.base_path.join("lib.rs");
-                    let code = FileManager::read_file(&lib_path).map_err(|_| {
-                        BundlerError::ProjectStructure {
-                            message: "Failed to read lib.rs for use path expansion".to_string(),
-                        }
-                    })?;
-
-                    let lib = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
-                        message: format!("Failed to parse lib.rs: {e}"),
-                        file_path: Some(lib_path),
-                    })?;
-
-                    new_items.extend(lib.items);
+                    new_items.extend(lib_items.iter().cloned());
                     library_expanded = true;
                 }
             } else {
@@ -201,6 +304,60 @@ impl CodeTransformer<'_> {
         }
         *items = new_items;
         Ok(())
+    }
+
+    /// Read and parse this crate's library root.
+    fn read_library_items(&self) -> Result<Vec<syn::Item>> {
+        let lib_path = self.library_source_path();
+
+        let code =
+            FileManager::read_file(&lib_path).map_err(|e| BundlerError::ProjectStructure {
+                message: format!(
+                    "Failed to read library root '{}' for crate expansion: {e}",
+                    lib_path.display()
+                ),
+            })?;
+
+        let lib = syn::parse_file(&code).map_err(|e| BundlerError::Parsing {
+            message: format!("Failed to parse library root: {e}"),
+            file_path: Some(lib_path),
+        })?;
+
+        Ok(lib.items)
+    }
+
+    /// Rewrite imports inside a nested module so they resolve against the bundle root.
+    ///
+    /// `use <this_crate>::X` becomes `use crate::X`, and `use <dependency>::X` becomes
+    /// `use crate::<dependency>::X`, matching where the inlined code actually lives.
+    pub(super) fn retarget_imports(&self, items: &mut [syn::Item]) {
+        for item in items {
+            let syn::Item::Use(item_use) = item else {
+                continue;
+            };
+            let syn::UseTree::Path(path) = &mut item_use.tree else {
+                continue;
+            };
+
+            if path.ident == self.crate_name {
+                item_use.leading_colon = None;
+                path.ident = syn::Ident::new("crate", path.ident.span());
+            } else if self.inlines_dependency(&path.ident) {
+                let span = path.ident.span();
+                item_use.leading_colon = None;
+                let inner = mem::replace(
+                    &mut item_use.tree,
+                    syn::UseTree::Glob(syn::UseGlob {
+                        star_token: syn::token::Star::default(),
+                    }),
+                );
+                item_use.tree = syn::UseTree::Path(syn::UsePath {
+                    ident: syn::Ident::new("crate", span),
+                    colon2_token: syn::token::PathSep::default(),
+                    tree: Box::new(inner),
+                });
+            }
+        }
     }
 
     /// Expand module declarations.
@@ -217,11 +374,16 @@ impl CodeTransformer<'_> {
             file_path: Some(base_path.join(format!("{name}.rs"))),
         })?;
 
-        let mut expander = CodeTransformer::new(&base_path, self.crate_name, self.config.clone());
+        let mut expander = self.child(&base_path);
+        expander.shadowed_roots = Self::scope_names(&file.items);
         expander.expand_items(&mut file.items)?;
 
         for item in &mut file.items {
             expander.visit_item_mut(item);
+        }
+
+        if let Some(error) = expander.error.take() {
+            return Err(error);
         }
 
         item.content = Some((syn::token::Brace::default(), file.items));
@@ -229,14 +391,87 @@ impl CodeTransformer<'_> {
     }
 
     /// Expand crate paths.
+    ///
+    /// A leading `::` anchors the path at the extern prelude, which is where both
+    /// this crate and its dependencies used to live. Bundling relocates them under
+    /// the bundle root, so the anchor is dropped along with the rewrite -- leaving
+    /// it in place would produce the un-parseable `::crate::..`.
     pub fn expand_crate_path(&self, path: &mut syn::Path) {
-        if path.segments.len() > 1 && Self::path_starts_with(path, self.crate_name) {
-            let new_segments = mem::replace(&mut path.segments, Punctuated::new())
-                .into_pairs()
-                .skip(1)
-                .collect();
-            path.segments = new_segments;
+        if path.segments.len() < 2 {
+            return;
         }
+
+        if Self::path_starts_with(path, self.crate_name) {
+            path.leading_colon = None;
+            if self.is_root {
+                let new_segments = mem::replace(&mut path.segments, Punctuated::new())
+                    .into_pairs()
+                    .skip(1)
+                    .collect();
+                path.segments = new_segments;
+            } else if let Some(first) = path.segments.first_mut() {
+                // Library items sit at the bundle root, unreachable by bare name here.
+                first.ident = syn::Ident::new("crate", first.ident.span());
+                first.arguments = syn::PathArguments::None;
+            }
+            return;
+        }
+
+        // Dependencies are inlined as `mod <name>` at the bundle root.
+        if !self.is_root
+            && let Some(first) = path.segments.first()
+            && self.inlines_dependency(&first.ident)
+        {
+            let span = first.ident.span();
+            path.leading_colon = None;
+            let tail = mem::replace(&mut path.segments, Punctuated::new());
+            path.segments
+                .push(syn::PathSegment::from(syn::Ident::new("crate", span)));
+            path.segments.extend(tail.into_pairs());
+        }
+    }
+
+    /// The names a module's own items bring into its scope as path roots.
+    ///
+    /// A `mod x` declares `x`; a `use a::b::x` (or `use a::b as x`) binds `x`. Both
+    /// take precedence over a same-named crate from the extern prelude.
+    pub(super) fn scope_names(items: &[syn::Item]) -> Vec<String> {
+        let mut names = Vec::new();
+
+        for item in items {
+            match item {
+                syn::Item::Mod(item_mod) => names.push(item_mod.ident.to_string()),
+                syn::Item::Use(item_use) => Self::collect_use_names(&item_use.tree, &mut names),
+                _ => {}
+            }
+        }
+
+        names
+    }
+
+    /// Collect the names a use tree binds in the enclosing scope.
+    fn collect_use_names(tree: &syn::UseTree, names: &mut Vec<String>) {
+        match tree {
+            syn::UseTree::Path(path) => Self::collect_use_names(&path.tree, names),
+            syn::UseTree::Name(name) => names.push(name.ident.to_string()),
+            syn::UseTree::Rename(rename) => names.push(rename.rename.to_string()),
+            syn::UseTree::Group(group) => {
+                for nested in &group.items {
+                    Self::collect_use_names(nested, names);
+                }
+            }
+            syn::UseTree::Glob(_) => {}
+        }
+    }
+
+    /// Whether `ident` names a dependency that this bundle inlines *and* that is
+    /// not shadowed by an item declared in the module currently being rewritten.
+    ///
+    /// Without the shadowing check a local `mod serde` inside a module would have
+    /// its own references retargeted at the inlined `crate::serde` dependency.
+    pub(super) fn inlines_dependency(&self, ident: &syn::Ident) -> bool {
+        let name = ident.to_string();
+        self.external_libs.contains_key(&name) && !self.shadowed_roots.contains(&name)
     }
 
     /// Check if item is an extern crate declaration.

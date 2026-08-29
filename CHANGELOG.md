@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Items guarded by `#[cfg(not(test))]` are no longer deleted from the bundle
+- `cfg` predicates that merely contain the text `test` (e.g. `feature = "fastest"`) are no longer mistaken for test markers
+- Test code nested inside inline `mod { .. }` blocks is now removed
+- `#[cfg(any(test, ...))]` items are no longer deleted: the predicate also holds
+  outside a test build, unlike `#[cfg(all(test, ...))]`
+- Test-only `use`, `const`, `static`, `type`, `union`, `macro_rules!` and
+  `extern crate` items are now stripped alongside test functions and modules. A
+  surviving `#[cfg(test)] use some_dep::X;` made dependency detection inline the
+  whole of `some_dep` into a bundle that never used it
+- Crate expansion honours a custom `[lib] path` instead of assuming `<src>/lib.rs`
+- Imports of the crate's own library from a submodule are retargeted to `crate::` instead of being left dangling
+- Path dependencies referenced only from a submodule are now inlined; previously the bundle referenced a crate that no longer existed
+- `crate::` paths inside an inlined dependency are requalified to its new module
+- Registry dependencies are no longer inlined: their sources rely on build scripts and `#[path]` modules that cannot be flattened
+- Module expansion failures are reported as errors instead of being printed as warnings while exiting successfully
+- `--m2` no longer deletes the comma separating a field or variant from a following attribute
+- `--m2` no longer collapses `a & &b` into the logical `a && b`
+- `--m2` no longer collapses `a / *b` into `/*`, which opened a block comment and
+  swallowed the rest of the bundle
+- `--m2` no longer collapses `x < <T as Trait>::CONST` into the shift operator `<<`
+- `--m2` no longer rewrites the one-element tuple `(x,)` into `(x)`; the bundle still
+  compiled but the tuple had silently become a parenthesised expression
+- Minifying with `--keep-docs` no longer emits a bundle that fails to compile: doc
+  comments are re-encoded as `#[doc = "..."]` attributes instead of `///` and
+  `/** ... */` comments. A line comment used to comment out everything after it
+  once the lines were joined, and a block comment had its interior punctuation
+  rewritten -- which could move its `*/` terminator -- and string placeholders
+  substituted inside it
+- The library no longer prints progress messages to stderr
+- `--validate` uses the requested transform options
+- Paths inside a macro are no longer left un-rewritten when preceded by a single `:`,
+  as in the `v:` of a struct literal; only a `::` that continues a longer path
+  suppresses the rewrite now
+- A leading `::`, as in `use ::dep::X` or `::dep::X`, is dropped when the path is
+  retargeted; it used to survive and produce the un-parseable `::crate::dep::X`
+- A module declared locally now shadows a dependency of the same name instead of
+  having its own references retargeted at the inlined dependency
+- A dependency whose name collides with a module defined by this crate is reported as
+  an error instead of silently resolving every such path to the wrong code
+- `--watch` no longer rebuilds forever when `-o` writes inside the watched directory:
+  the bundle's own output is not treated as a source change
+- `cg-bundler | head` no longer panics with a broken-pipe error: a consumer that
+  stops reading ends the pipeline normally
+- A path that does not exist is reported as such, instead of being resolved against
+  a parent directory and bundling an unrelated project
+- README: the download instructions were missing `chmod +x` and ran the binary via
+  `bash`, which cannot execute it; all five published platform builds are now listed
+- `--watch` writes status messages to stderr (keeping stdout clean) and uses a trailing debounce so a burst of edits rebuilds the final state
+
+### Changed
+- `cg-bundler` now searches parent directories for `Cargo.toml`, so it runs from
+  anywhere inside a project rather than only from its root
+- Pointing it at a workspace root names the members to bundle instead of reporting
+  that a root package is missing
+- A problem in the user's own project is no longer presented as a bug in the bundler.
+  The issue-tracker link stays, but the "found a bug?" banner is now reserved for
+  unexpected failures
+- `--pretty` warns when `rustfmt` is unavailable instead of silently emitting
+  unformatted output
+- `--src-dir` is resolved against the project root, so `--watch` works from a
+  subdirectory just as bundling does
+- A path that is simply missing is no longer reported as a bug in the bundler
+- README: `-o output.rs` replaces `> output.rs` as the documented command. A shell
+  redirect truncates its target before the bundler runs, so a failed build left an
+  empty file and destroyed the previous bundle
+- Writing the bundle to a terminal adds a one-line hint about `-o` and redirection;
+  redirected and piped output is unchanged
+
+### Added
+- `CodeTransformer::with_library_path` for projects with a non-default library root
+- `tests/regression_tests.rs` covering all of the above
+
+### Removed
+- Unused dependencies: `anyhow`, `thiserror`, `walkdir`, `proptest`
+
+## [Previous Unreleased]
+
 ### Added
 - Enhanced open source best practices implementation following opensource.guide
 - Comprehensive security policy (SECURITY.md) with vulnerability reporting

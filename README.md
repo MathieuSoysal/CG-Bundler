@@ -23,14 +23,34 @@
 _With cargo :_
 ```bash
 cargo install cg-bundler
-cg-bundler > output.rs
+cg-bundler -o output.rs
 ```
 
-_Without cargo :_
+> Prefer `-o output.rs` over `> output.rs`. The shell truncates a redirect
+> target *before* the bundler runs, so a build that fails leaves you with an
+> empty file and your last working bundle gone. With `-o`, the file is written
+> only after bundling succeeds.
+
+_Without cargo_ — download the binary for your platform, make it executable, and run it:
 ```bash
 curl -L https://github.com/MathieuSoysal/cg-bundler/releases/latest/download/cg-bundler-linux-amd64 -o cg-bundler
-bash cg-bundler > output.rs
+chmod +x cg-bundler
+./cg-bundler -o output.rs
 ```
+
+Replace `cg-bundler-linux-amd64` with the build for your platform:
+
+| Platform | Asset |
+| --- | --- |
+| Linux x86-64 | `cg-bundler-linux-amd64` |
+| Linux ARM64 | `cg-bundler-linux-arm64` |
+| macOS Intel | `cg-bundler-macos-amd64` |
+| macOS Apple Silicon | `cg-bundler-macos-arm64` |
+| Windows x86-64 | `cg-bundler-windows-amd64.exe` |
+
+Run it from anywhere inside your Cargo project; parent directories are searched
+for `Cargo.toml`, just as `cargo` does. In a workspace, point it at the member
+you want to bundle (`cg-bundler puzzle1`).
 
 ## ✨ Features
 

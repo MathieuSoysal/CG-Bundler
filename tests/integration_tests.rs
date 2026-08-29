@@ -2206,21 +2206,23 @@ fn test_cli_error_display_integration() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Verify enhanced error display
+    // Verify enhanced error display. A bad path is the caller's mistake, so the
+    // error names it and still offers the issue tracker -- but it is not dressed
+    // up as a bug report. The "found a bug?" banner is reserved for unexpected
+    // failures and is covered by the `diagnostics` unit tests.
     assert!(stderr.contains("Error:"), "Should contain error prefix");
     assert!(
-        stderr.contains("💡 Need help or found a bug?"),
-        "Should contain help prompt"
+        stderr.contains("does not exist"),
+        "Should say the path does not exist, got: {stderr}"
     );
     assert!(
         stderr.contains("https://github.com/MathieuSoysal/CG-Bundler/issues/new"),
         "Should contain GitHub issues URL"
     );
     assert!(
-        stderr.contains("Your feedback helps improve CG-Bundler"),
-        "Should contain encouraging message"
+        !stderr.contains("💡 Need help or found a bug?"),
+        "A bad path must not be reported as a bundler bug, got: {stderr}"
     );
-    assert!(stderr.contains("━"), "Should contain visual separators");
 }
 
 /// Test that info command includes enhanced footer

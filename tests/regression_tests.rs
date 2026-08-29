@@ -1,0 +1,1461 @@
+//! Regression tests for defects found during the codebase audit.
+//!
+//! Each test maps to a concrete bug where bundling used to either silently delete
+//! live code, silently emit code that does not compile, or exit successfully with
+//! a broken bundle.
+
+use assert_cmd::cargo::cargo_bin_cmd;
+use cg_bundler::{Bundler, TransformConfig, bundle};
+use predicates::prelude::*;
+use std::fs;
+use std::path::Path;
+use tempfile::TempDir;
+
+/// Write a Cargo project. `files` are `(relative path, contents)` pairs.
+fn write_project(root: &Path, manifest: &str, files: &[(&str, &str)]) {
+    fs::create_dir_all(root).expect("create project root");
+    fs::write(root.join("Cargo.toml"), manifest).expect("write Cargo.toml");
+
+    for (relative, contents) in files {
+        let path = root.join(relative);
+        fs::create_dir_all(path.parent().expect("file has a parent")).expect("create parent dir");
+        fs::write(&path, contents).expect("write source file");
+    }
+}
+
+fn simple_manifest(name: &str) -> String {
+    format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")
+}
+
+/// Bundle and assert the result parses as Rust, returning it for further assertions.
+fn bundle_and_parse(project: &Path) -> String {
+    let bundled = bundle(project).expect("bundling should succeed");
+    syn::parse_file(&bundled)
+        .unwrap_or_else(|e| panic!("bundle is not valid Rust: {e}\n{bundled}"));
+    bundled
+}
+
+mod test_detection {
+    use super::*;
+
+    /// `#[cfg(not(test))]` items belong to the *non-test* build and must survive.
+    #[test]
+    fn keeps_cfg_not_test_items() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("cfg_not_test"),
+            &[(
+                "src/main.rs",
+                "fn main() { println!(\"{}\", compute()); }\n\
+                 #[cfg(not(test))]\nfn compute() -> i32 { 42 }\n\
+                 #[cfg(test)]\nfn compute() -> i32 { 0 }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+
+        assert!(
+            bundled.contains("#[cfg(not(test))]"),
+            "cfg(not(test)) item must be kept:\n{bundled}"
+        );
+        assert!(
+            !bundled.contains("#[cfg(test)]"),
+            "cfg(test) item must be removed:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("42"),
+            "the non-test implementation must survive:\n{bundled}"
+        );
+    }
+
+    /// A `cfg` predicate that merely *contains* the substring "test" is not a test marker.
+    #[test]
+    fn keeps_predicates_whose_text_contains_test() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("cfg_substring"),
+            &[(
+                "src/main.rs",
+                "#[cfg(feature = \"fastest\")]\nfn fast_path() {}\n\
+                 #[cfg(target_os = \"latest_os\")]\nfn other() {}\n\
+                 fn main() {}\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+
+        assert!(
+            bundled.contains("fast_path"),
+            "feature `fastest` is unrelated to tests:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("fn other"),
+            "target_os predicate is unrelated to tests:\n{bundled}"
+        );
+    }
+
+    /// `any(test, X)` holds whenever `X` holds, so it is not a test-only marker.
+    /// `all(test, X)` cannot hold outside a test build, so it is.
+    #[test]
+    fn distinguishes_any_from_all_in_cfg_predicates() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            "[package]\nname = \"any_all\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ndebug = []\n",
+            &[(
+                "src/main.rs",
+                "#[cfg(any(test, feature = \"debug\"))]\npub fn kept() -> i32 { 7 }\n\
+                 #[cfg(all(test, feature = \"debug\"))]\npub fn dropped() -> i32 { 8 }\n\
+                 fn main() { println!(\"ok\"); }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+
+        assert!(
+            bundled.contains("fn kept"),
+            "any(test, feature = ..) can hold in a non-test build:\n{bundled}"
+        );
+        assert!(
+            !bundled.contains("fn dropped"),
+            "all(test, ..) is test-only:\n{bundled}"
+        );
+    }
+
+    /// Test code nested inside an inline `mod` used to survive bundling.
+    #[test]
+    fn removes_tests_inside_inline_modules() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("inline_tests"),
+            &[(
+                "src/main.rs",
+                "mod outer {\n    pub fn keep() {}\n\n    #[cfg(test)]\n    mod tests {\n        #[test]\n        fn nested() {}\n    }\n}\nfn main() { outer::keep(); }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+
+        assert!(bundled.contains("fn keep"), "real code must survive");
+        assert!(
+            !bundled.contains("#[cfg(test)]") && !bundled.contains("#[test]"),
+            "nested test module must be removed:\n{bundled}"
+        );
+    }
+
+    /// `--keep-tests` must still keep nested test code.
+    #[test]
+    fn keep_tests_config_preserves_nested_tests() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("keep_nested"),
+            &[(
+                "src/main.rs",
+                "mod outer {\n    #[cfg(test)]\n    mod tests {\n        #[test]\n        fn nested() {}\n    }\n}\nfn main() {}\n",
+            )],
+        );
+
+        let bundled = Bundler::with_config(TransformConfig {
+            remove_tests: false,
+            ..TransformConfig::default()
+        })
+        .bundle(temp.path())
+        .expect("bundling should succeed");
+
+        assert!(bundled.contains("#[test]"), "{bundled}");
+    }
+}
+
+mod library_resolution {
+    use super::*;
+
+    /// The library root was hard-coded to `<src>/lib.rs`, breaking custom `[lib] path`.
+    #[test]
+    fn expands_library_with_custom_path() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"custom_lib\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[lib]\nname = \"custom_lib\"\npath = \"src/library.rs\"\n",
+                "\n[[bin]]\nname = \"custom_lib\"\npath = \"src/main.rs\"\n",
+            ),
+            &[
+                ("src/library.rs", "pub fn hello() -> i32 { 7 }\n"),
+                (
+                    "src/main.rs",
+                    "use custom_lib::hello;\nfn main() { println!(\"{}\", hello()); }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+
+        assert!(bundled.contains("fn hello"), "{bundled}");
+        assert!(!bundled.contains("use custom_lib"), "{bundled}");
+    }
+
+    /// Imports of the crate's own library from a submodule must go through `crate::`.
+    #[test]
+    fn submodule_importing_own_crate_is_retargeted() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("self_import"),
+            &[
+                ("src/lib.rs", "pub struct Marker;\npub mod helper;\n"),
+                (
+                    "src/helper.rs",
+                    "use self_import::Marker;\npub fn take(_: Marker) {}\n",
+                ),
+                (
+                    "src/main.rs",
+                    "use self_import::Marker;\nfn main() { helper::take(Marker); }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+
+        assert_eq!(
+            bundled.matches("struct Marker").count(),
+            1,
+            "library must be inlined exactly once:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("pub fn take"),
+            "submodule must be expanded:\n{bundled}"
+        );
+        assert!(
+            !bundled.contains("use self_import"),
+            "crate-relative import must be retargeted:\n{bundled}"
+        );
+    }
+}
+
+mod external_dependencies {
+    use super::*;
+
+    /// `helper` is a path dependency exposing `crate::util` internally.
+    fn write_workspace(root: &Path, app_main: &str, extra_app_files: &[(&str, &str)]) {
+        write_project(
+            &root.join("helper"),
+            "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            &[
+                (
+                    "src/lib.rs",
+                    "pub mod util;\npub fn help() -> i32 { crate::util::v() }\n",
+                ),
+                ("src/util.rs", "pub fn v() -> i32 { 9 }\n"),
+            ],
+        );
+
+        let mut files: Vec<(&str, &str)> = vec![("src/main.rs", app_main)];
+        files.extend_from_slice(extra_app_files);
+
+        write_project(
+            &root.join("app"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = { path = \"../helper\" }\n",
+            &files,
+        );
+    }
+
+    /// A dependency used only from a submodule used to be left un-inlined.
+    #[test]
+    fn inlines_dependency_referenced_from_submodule() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "mod inner;\nfn main() { println!(\"{}\", inner::run()); }\n",
+            &[(
+                "src/inner.rs",
+                "use helper::help;\npub fn run() -> i32 { help() }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            bundled.contains("mod helper"),
+            "dependency must be inlined:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("use crate::helper::help"),
+            "submodule import must be retargeted:\n{bundled}"
+        );
+    }
+
+    /// A dependency reached only from a `#[cfg(test)]` import must not be inlined:
+    /// the import is test-only code that bundling strips anyway.
+    #[test]
+    fn test_only_import_does_not_inline_dependency() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "mod inner;\nfn main() { println!(\"{}\", inner::real()); }\n",
+            &[(
+                "src/inner.rs",
+                "#[cfg(test)]\nuse helper::help;\n\npub fn real() -> i32 { 1 }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            !bundled.contains("mod helper"),
+            "a test-only import must not drag in the whole dependency:\n{bundled}"
+        );
+        assert!(
+            !bundled.contains("use helper::help") && !bundled.contains("use crate::helper::help"),
+            "the test-only import itself must be stripped:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("fn real"),
+            "live code must survive:\n{bundled}"
+        );
+    }
+
+    /// `crate::` inside an inlined dependency must be requalified to its new module.
+    #[test]
+    fn requalifies_crate_paths_inside_inlined_dependency() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "use helper::help;\nfn main() { println!(\"{}\", help()); }\n",
+            &[],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            bundled.contains("crate::helper::util::v()"),
+            "dependency-internal `crate::` must point at the inlined module:\n{bundled}"
+        );
+    }
+
+    /// Registry dependencies cannot be inlined; bundling must still succeed.
+    #[test]
+    fn registry_dependencies_are_not_inlined() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"registry_dep\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[dependencies]\nserde = \"1.0\"\n",
+            ),
+            &[(
+                "src/main.rs",
+                "use serde::Serialize;\n#[derive(Serialize)]\nstruct S;\nfn main() {}\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+
+        assert!(
+            !bundled.contains("mod serde"),
+            "registry crates must not be inlined:\n{bundled}"
+        );
+        assert!(bundled.contains("use serde::Serialize"), "{bundled}");
+    }
+
+    /// A dependency referenced *only* from inside a macro must still be inlined.
+    #[test]
+    fn detects_dependency_referenced_only_inside_a_macro() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "mod inner;\nfn main() { println!(\"{}\", inner::show()); }\n",
+            &[(
+                "src/inner.rs",
+                "pub fn show() -> String { format!(\"{}\", helper::help()) }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            bundled.contains("mod helper"),
+            "dependency used only inside a macro must be inlined:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("crate :: helper :: help") || bundled.contains("crate ::helper::help"),
+            "macro-internal dependency path must be anchored at the bundle root:\n{bundled}"
+        );
+    }
+}
+
+mod failure_reporting {
+    use super::*;
+
+    /// A module that cannot be resolved used to produce a broken bundle and exit 0.
+    #[test]
+    fn unresolvable_module_is_an_error() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("missing_mod"),
+            &[("src/main.rs", "mod missing;\nfn main() {}\n")],
+        );
+
+        assert!(
+            bundle(temp.path()).is_err(),
+            "unresolvable module must be reported as an error"
+        );
+    }
+
+    #[test]
+    fn cli_fails_on_unresolvable_module() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("missing_mod_cli"),
+            &[("src/main.rs", "mod missing;\nfn main() {}\n")],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Error:"));
+    }
+
+    #[test]
+    fn validate_fails_on_unresolvable_module() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("missing_mod_validate"),
+            &[("src/main.rs", "mod missing;\nfn main() {}\n")],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .arg("--validate")
+            .assert()
+            .failure();
+    }
+
+    /// The library must stay silent; progress noise used to be printed unconditionally.
+    #[test]
+    fn bundling_is_silent_without_verbose() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("silent"),
+            &[
+                ("src/lib.rs", "pub fn hello() {}\n"),
+                (
+                    "src/main.rs",
+                    "use silent::hello;\nfn main() { hello(); }\n",
+                ),
+            ],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .assert()
+            .success()
+            .stderr(predicate::str::is_empty());
+    }
+}
+
+mod minification {
+    use super::*;
+
+    /// `,#` was rewritten to `#`, deleting a required separator before an attribute.
+    #[test]
+    fn aggressive_minify_keeps_comma_before_attribute() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("attr_comma"),
+            &[(
+                "src/main.rs",
+                "pub enum Kind {\n    Alpha,\n    #[allow(dead_code)]\n    Beta,\n}\n\
+                 pub struct Cfg {\n    pub a: i32,\n    #[allow(dead_code)]\n    pub b: i32,\n}\n\
+                 fn main() { let _ = (Kind::Alpha, Cfg { a: 1, b: 2 }); }\n",
+            )],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .args(["--m2", "-o", "out.rs"])
+            .assert()
+            .success();
+
+        let bundled = fs::read_to_string(temp.path().join("out.rs")).expect("read minified bundle");
+
+        assert!(bundled.contains("Alpha,#[allow"), "{bundled}");
+        syn::parse_file(&bundled)
+            .unwrap_or_else(|e| panic!("minified bundle is not valid Rust: {e}\n{bundled}"));
+    }
+
+    /// `x & &y` must not collapse into the logical `&&`, and `a && b` must be kept.
+    #[test]
+    fn aggressive_minify_distinguishes_bitand_from_logical_and() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("amp"),
+            &[(
+                "src/main.rs",
+                "fn main() {\n    let (x, y) = (6u8, 3u8);\n    let (a, b) = (true, false);\n    println!(\"{} {}\", x & &y, a && b);\n}\n",
+            )],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .args(["--m2", "-o", "out.rs"])
+            .assert()
+            .success();
+
+        let bundled = fs::read_to_string(temp.path().join("out.rs")).expect("read minified bundle");
+
+        assert!(
+            bundled.contains("x & & y"),
+            "bitwise and of a reference must not become `&&`:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("a&&b"),
+            "logical and must stay collapsed:\n{bundled}"
+        );
+        syn::parse_file(&bundled)
+            .unwrap_or_else(|e| panic!("minified bundle is not valid Rust: {e}\n{bundled}"));
+    }
+
+    /// `--keep-docs` plus minification used to emit a `///` comment on the single
+    /// output line, commenting out everything that followed it.
+    #[test]
+    fn minify_keeps_doc_comments_without_swallowing_the_file() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("docs_minified"),
+            &[(
+                "src/main.rs",
+                "//! Crate level docs.\n\
+                 /// Doubles `value`.\n\
+                 pub fn double(value: i32) -> i32 { value * 2 }\n\
+                 fn main() { println!(\"{}\", double(21)); }\n",
+            )],
+        );
+
+        for flags in [["-m", "--keep-docs"], ["--m2", "--keep-docs"]] {
+            cargo_bin_cmd!("cg-bundler")
+                .current_dir(temp.path())
+                .args(flags)
+                .args(["-o", "out.rs"])
+                .assert()
+                .success();
+
+            let bundled =
+                fs::read_to_string(temp.path().join("out.rs")).expect("read minified bundle");
+
+            assert!(
+                !bundled.contains("///"),
+                "doc comments must be re-encoded as attributes for {flags:?}:\n{bundled}"
+            );
+            assert!(
+                bundled.contains("Doubles"),
+                "doc text must survive for {flags:?}:\n{bundled}"
+            );
+            assert!(
+                bundled.contains("fn main"),
+                "code after a doc comment must not be commented out for {flags:?}:\n{bundled}"
+            );
+            syn::parse_file(&bundled).unwrap_or_else(|e| {
+                panic!("minified bundle is not valid Rust for {flags:?}: {e}\n{bundled}")
+            });
+        }
+    }
+
+    /// `a / *b` must not collapse into `/*`, which opens a block comment.
+    #[test]
+    fn aggressive_minify_keeps_division_by_dereference_apart() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("slash_star"),
+            &[(
+                "src/main.rs",
+                "fn divide(a: u64, b: &u64) -> u64 { a / *b }\n\
+                 fn main() { println!(\"{}\", divide(8, &4)); }\n",
+            )],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .args(["--m2", "-o", "out.rs"])
+            .assert()
+            .success();
+
+        let bundled = fs::read_to_string(temp.path().join("out.rs")).expect("read minified bundle");
+
+        assert!(
+            !bundled.contains("/*"),
+            "division by a dereference must not open a block comment:\n{bundled}"
+        );
+        syn::parse_file(&bundled)
+            .unwrap_or_else(|e| panic!("minified bundle is not valid Rust: {e}\n{bundled}"));
+    }
+
+    /// `(x,)` is a one-element tuple; rewriting `,)` to `)` silently turned it
+    /// into a parenthesised expression, which still compiles but means something
+    /// different.
+    #[test]
+    fn aggressive_minify_preserves_one_element_tuples() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("one_tuple"),
+            &[(
+                "src/main.rs",
+                "fn pair() -> (i32,) { (42,) }\n\
+                 fn main() { println!(\"{:?}\", pair()); }\n",
+            )],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .args(["--m2", "-o", "out.rs"])
+            .assert()
+            .success();
+
+        let bundled = fs::read_to_string(temp.path().join("out.rs")).expect("read minified bundle");
+
+        assert!(
+            bundled.contains("(42,)") && bundled.contains("(i32,)"),
+            "one-element tuple must keep its comma:\n{bundled}"
+        );
+        syn::parse_file(&bundled)
+            .unwrap_or_else(|e| panic!("minified bundle is not valid Rust: {e}\n{bundled}"));
+    }
+
+    /// `x < <T as Trait>::CONST` must not collapse into the shift operator `<<`.
+    #[test]
+    fn aggressive_minify_keeps_qualified_path_after_less_than() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("lt_qpath"),
+            &[(
+                "src/main.rs",
+                "trait Limit { const MAX: i32; }\n\
+                 struct S;\n\
+                 impl Limit for S { const MAX: i32 = 10; }\n\
+                 fn under(x: i32) -> bool { x < <S as Limit>::MAX }\n\
+                 fn main() { println!(\"{} {}\", under(3), 1i32 << 2); }\n",
+            )],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .args(["--m2", "-o", "out.rs"])
+            .assert()
+            .success();
+
+        let bundled = fs::read_to_string(temp.path().join("out.rs")).expect("read minified bundle");
+
+        assert!(
+            bundled.contains("x < <S as Limit>::MAX"),
+            "comparison against a qualified path must not become a shift:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("1i32<<2"),
+            "a genuine shift must stay collapsed:\n{bundled}"
+        );
+        syn::parse_file(&bundled)
+            .unwrap_or_else(|e| panic!("minified bundle is not valid Rust: {e}\n{bundled}"));
+    }
+
+    /// Block comments survive line joining, but their interior used to be
+    /// rewritten by punctuation tightening -- which could move the `*/`
+    /// terminator -- and to have string placeholders substituted inside it.
+    #[test]
+    fn minify_reencodes_block_doc_comments() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("block_docs"),
+            &[(
+                "src/main.rs",
+                "/** Block docs spanning\n * a line break with a tricky * / sequence\n */\n\
+                 pub fn tricky() -> i32 { 7 }\n\
+                 fn main() { println!(\"{}\", tricky()); }\n",
+            )],
+        );
+
+        for flags in [["-m", "--keep-docs"], ["--m2", "--keep-docs"]] {
+            cargo_bin_cmd!("cg-bundler")
+                .current_dir(temp.path())
+                .args(flags)
+                .args(["-o", "out.rs"])
+                .assert()
+                .success();
+
+            let bundled =
+                fs::read_to_string(temp.path().join("out.rs")).expect("read minified bundle");
+
+            assert!(
+                !bundled.contains("/*"),
+                "block comments must be re-encoded as attributes for {flags:?}:\n{bundled}"
+            );
+            assert!(
+                bundled.contains("Block docs spanning"),
+                "doc text must survive for {flags:?}:\n{bundled}"
+            );
+            syn::parse_file(&bundled).unwrap_or_else(|e| {
+                panic!("minified bundle is not valid Rust for {flags:?}: {e}\n{bundled}")
+            });
+        }
+    }
+}
+
+mod dependency_scoping {
+    use super::*;
+
+    /// `helper` is a path dependency; `app` also declares a `helper` module of its own.
+    fn write_workspace(root: &Path, app_files: &[(&str, &str)]) {
+        write_project(
+            &root.join("helper"),
+            "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            &[("src/lib.rs", "pub fn value() -> i32 { 100 }\n")],
+        );
+        write_project(
+            &root.join("app"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = { path = \"../helper\" }\n",
+            app_files,
+        );
+    }
+
+    /// A `:` that separates a field from its value is not a path separator, so it must
+    /// not stop a dependency path inside a macro from being retargeted.
+    #[test]
+    fn rewrites_dependency_paths_after_a_field_colon_in_a_macro() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            &[
+                ("src/main.rs", "mod inner;\nfn main() { inner::run(); }\n"),
+                (
+                    "src/inner.rs",
+                    concat!(
+                        "pub struct Holder { pub v: i32 }\n",
+                        "pub fn run() {\n",
+                        // A struct literal *inside* a macro: the `v:` here is the
+                        // colon that used to suppress the rewrite.
+                        "    println!(\"{}\", Holder { v: helper::value() }.v);\n",
+                        // And an absolute path inside a macro.
+                        "    println!(\"{}\", ::helper::value());\n",
+                        "}\n",
+                    ),
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        // `prettyplease` prints a synthesized `crate` keyword as `crate ::`; the
+        // rendering differs from the AST path but the tokens do not.
+        let tightened = bundled.replace(" ::", "::");
+        assert!(
+            !tightened.contains("v: helper::value"),
+            "a struct-literal colon must not block the rewrite:\n{bundled}"
+        );
+        assert!(
+            !tightened.contains("::helper::value") || tightened.contains("crate::helper::value"),
+            "an absolute path must be anchored at the bundle root:\n{bundled}"
+        );
+        assert_eq!(
+            tightened.matches("crate::helper::value").count(),
+            2,
+            "both dependency references must be retargeted:\n{bundled}"
+        );
+    }
+
+    /// `::helper::X` anchors at the extern prelude, which is exactly where the
+    /// dependency used to live; the anchor must move with it.
+    #[test]
+    fn rewrites_dependency_paths_with_a_leading_colon() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            &[
+                (
+                    "src/main.rs",
+                    "mod inner;\nfn main() { println!(\"{}\", inner::go()); }\n",
+                ),
+                (
+                    "src/inner.rs",
+                    "use ::helper::value;\n                     pub fn go() -> i32 { let d: i32 = ::helper::value(); d + value() }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            !bundled.contains("::crate::") && !bundled.contains("use ::helper"),
+            "a leading `::` must not survive the rewrite:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("use crate::helper::value")
+                && bundled.contains("crate::helper::value()"),
+            "both forms must be anchored at the bundle root:\n{bundled}"
+        );
+    }
+
+    /// A module declared locally shadows a same-named dependency, so its references
+    /// must be left alone.
+    #[test]
+    fn local_module_shadows_a_dependency_of_the_same_name() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            &[
+                (
+                    "src/main.rs",
+                    "mod inner;\nmod user;\n                     fn main() { println!(\"{} {}\", inner::from_dep(), user::from_local()); }\n",
+                ),
+                (
+                    "src/inner.rs",
+                    "pub fn from_dep() -> i32 { helper::value() }\n",
+                ),
+                (
+                    "src/user.rs",
+                    "mod helper { pub fn value() -> i32 { 1 } }\n                     pub fn from_local() -> i32 { helper::value() }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            bundled.contains("pub fn from_local() -> i32 { helper::value() }")
+                || bundled.contains("helper::value()"),
+            "sanity: the local call survives:\n{bundled}"
+        );
+        assert_eq!(
+            bundled.matches("crate::helper::value").count(),
+            1,
+            "only the real dependency reference may be retargeted:\n{bundled}"
+        );
+    }
+
+    /// Inlining a dependency over a same-named module of this crate would silently
+    /// resolve every `helper::..` path to the wrong code.
+    #[test]
+    fn dependency_colliding_with_a_local_module_is_an_error() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            &[
+                (
+                    "src/main.rs",
+                    "mod helper;\nfn main() { println!(\"{}\", helper::local()); }\n",
+                ),
+                ("src/helper.rs", "pub fn local() -> i32 { 1 }\n"),
+            ],
+        );
+
+        let error = bundle(temp.path().join("app")).expect_err("collision must be reported");
+        let message = error.to_string();
+
+        assert!(
+            message.contains("helper") && message.contains("collides"),
+            "the error must name the collision: {message}"
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path().join("app"))
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("collides"));
+    }
+}
+
+mod crate_path_requalification {
+    use super::*;
+
+    /// Test that `crate::` paths are correctly requalified when dependencies are inlined.
+    #[test]
+    fn requalifies_crate_paths_with_use_statements() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "use helper::help;\nfn main() { println!(\"{}\", help()); }\n",
+            &[],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        // Verify that crate:: paths are requalified
+        assert!(
+            bundled.contains("crate::helper::util::v()"),
+            "crate:: paths must be requalified to module path:\n{bundled}"
+        );
+    }
+
+    /// Test that macro-expanded paths are requalified.
+    #[test]
+    fn requalifies_crate_paths_in_macros() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "mod inner;\nfn main() { println!(\"{}\", inner::show()); }\n",
+            &[(
+                "src/inner.rs",
+                "pub fn show() -> String { format!(\"{}\", helper::help()) }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        // Verify macro expansion includes requalified paths
+        assert!(
+            bundled.contains("mod helper"),
+            "macro-expanded dependency must be inlined"
+        );
+    }
+
+    fn write_workspace(root: &Path, app_main: &str, extra_app_files: &[(&str, &str)]) {
+        write_project(
+            &root.join("helper"),
+            "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            &[
+                (
+                    "src/lib.rs",
+                    "pub mod util;\npub fn help() -> i32 { crate::util::v() }\n",
+                ),
+                ("src/util.rs", "pub fn v() -> i32 { 9 }\n"),
+            ],
+        );
+
+        let mut files: Vec<(&str, &str)> = vec![("src/main.rs", app_main)];
+        files.extend_from_slice(extra_app_files);
+
+        write_project(
+            &root.join("app"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = { path = \"../helper\" }\n",
+            &files,
+        );
+    }
+}
+
+mod additional_coverage {
+    use super::*;
+
+    /// Test that --keep-tests respects the configuration in detail.
+    #[test]
+    fn keep_tests_preserves_test_attributes() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("keep_test_attrs"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\nuse std::collections::HashMap;\n\n\
+                 #[cfg(test)]\nconst TEST_VALUE: i32 = 42;\n\n\
+                 fn main() { println!(\"ok\"); }\n",
+            )],
+        );
+
+        let bundled = Bundler::with_config(TransformConfig {
+            remove_tests: false,
+            ..TransformConfig::default()
+        })
+        .bundle(temp.path())
+        .expect("bundling should succeed");
+
+        assert!(bundled.contains("TEST_VALUE"), "test const must survive");
+        assert!(bundled.contains("HashMap"), "test imports must survive");
+    }
+
+    /// Test that minify with `remove_docs` removes doc comments correctly.
+    #[test]
+    fn minify_removes_doc_comments_when_configured() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("docs_removed"),
+            &[(
+                "src/main.rs",
+                "/// This doc should be removed.\n\
+                 pub fn documented() -> i32 { 42 }\n\
+                 fn main() { println!(\"{}\", documented()); }\n",
+            )],
+        );
+
+        let bundled = Bundler::with_config(TransformConfig {
+            aggressive_minify: true,
+            remove_docs: true,
+            ..TransformConfig::default()
+        })
+        .bundle(temp.path())
+        .expect("bundling should succeed");
+
+        assert!(
+            !bundled.contains("This doc should be removed"),
+            "doc comments should be removed"
+        );
+    }
+
+    /// Test edge case with multiple nested modules and dependencies.
+    #[test]
+    fn handles_deeply_nested_module_structure() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("deep_nesting"),
+            &[
+                ("src/lib.rs", "pub mod level1;\n"),
+                ("src/level1.rs", "pub mod level2;\n"),
+                ("src/level1/level2.rs", "pub fn value() -> i32 { 123 }\n"),
+                (
+                    "src/main.rs",
+                    "use deep_nesting::level1::level2;\nfn main() { println!(\"{}\", level2::value()); }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("fn value"),
+            "deeply nested functions must survive"
+        );
+    }
+
+    /// Test that test-only types are properly removed.
+    #[test]
+    fn removes_test_only_type_definitions() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("test_types"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\npub struct TestHelper;\n\n\
+                 #[cfg(test)]\npub type TestAlias = i32;\n\n\
+                 #[cfg(test)]\npub union TestUnion { a: i32 }\n\n\
+                 fn main() {}\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            !bundled.contains("TestHelper"),
+            "test struct must be removed"
+        );
+        assert!(
+            !bundled.contains("TestAlias"),
+            "test type alias must be removed"
+        );
+        assert!(!bundled.contains("TestUnion"), "test union must be removed");
+    }
+
+    /// Test that test-only macros are properly removed.
+    #[test]
+    fn removes_test_only_macro_definitions() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("test_macros"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\nmacro_rules! test_macro { () => { 42 } }\n\n\
+                 fn main() { println!(\"ok\"); }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            !bundled.contains("test_macro"),
+            "test macro must be removed"
+        );
+    }
+
+    /// Test that test-only extern crate is properly removed.
+    #[test]
+    fn removes_test_only_extern_crate() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("test_extern"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\nextern crate alloc;\n\n\
+                 fn main() { println!(\"ok\"); }\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            !bundled.contains("extern crate alloc"),
+            "test extern crate must be removed"
+        );
+    }
+
+    /// Test custom library path with minification.
+    #[test]
+    fn custom_library_path_with_minification() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"custom_lib_min\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[lib]\nname = \"custom_lib_min\"\npath = \"src/library.rs\"\n",
+                "\n[[bin]]\nname = \"custom_lib_min\"\npath = \"src/main.rs\"\n",
+            ),
+            &[
+                (
+                    "src/library.rs",
+                    "pub fn compute() -> i32 { 100 + 20 + 3 }\n",
+                ),
+                (
+                    "src/main.rs",
+                    "use custom_lib_min::compute;\nfn main() { println!(\"{}\", compute()); }\n",
+                ),
+            ],
+        );
+
+        let bundled = Bundler::with_config(TransformConfig {
+            aggressive_minify: true,
+            ..TransformConfig::default()
+        })
+        .bundle(temp.path())
+        .expect("bundling should succeed");
+
+        assert!(
+            bundled.contains("fn compute"),
+            "custom lib function must survive"
+        );
+        syn::parse_file(&bundled).expect("minified custom lib bundle must be valid Rust");
+    }
+
+    /// Test that multiple features can be distinguished from test marker.
+    #[test]
+    fn distinguishes_multiple_feature_flags_from_test() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"multi_feature\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[features]\nfeature1 = []\nfeature2 = []\n",
+            ),
+            &[(
+                "src/main.rs",
+                "#[cfg(all(feature = \"feature1\", feature = \"feature2\"))]\n\
+                 fn both_features() {}\n\n\
+                 fn main() {}\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("fn both_features"),
+            "feature-gated code must survive"
+        );
+    }
+
+    /// Test error handling with Bundler API.
+    #[test]
+    fn bundler_api_handles_missing_manifest() {
+        let temp = TempDir::new().expect("temp dir");
+        let result = Bundler::default().bundle(temp.path());
+        assert!(result.is_err(), "bundling without Cargo.toml should fail");
+    }
+
+    /// Test that inlined dependencies maintain their internal structure.
+    #[test]
+    fn inlined_dependency_maintains_module_structure() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            "use helper::help;\nfn main() { println!(\"{}\", help()); }\n",
+            &[],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            bundled.matches("pub mod").count() > 0,
+            "inlined modules must preserve pub mod structure"
+        );
+        assert!(
+            bundled.contains("pub fn"),
+            "inlined functions must be accessible"
+        );
+    }
+
+    fn write_workspace(root: &Path, app_main: &str, extra_app_files: &[(&str, &str)]) {
+        write_project(
+            &root.join("helper"),
+            "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            &[
+                (
+                    "src/lib.rs",
+                    "pub mod util;\npub fn help() -> i32 { crate::util::v() }\n",
+                ),
+                ("src/util.rs", "pub fn v() -> i32 { 9 }\n"),
+            ],
+        );
+
+        let mut files: Vec<(&str, &str)> = vec![("src/main.rs", app_main)];
+        files.extend_from_slice(extra_app_files);
+
+        write_project(
+            &root.join("app"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = { path = \"../helper\" }\n",
+            &files,
+        );
+    }
+}
+
+mod library_path_variations {
+    use super::*;
+
+    /// Test bundling with explicitly configured library path
+    #[test]
+    fn bundles_with_explicit_library_path_config() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"lib_cfg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[lib]\nname = \"lib_cfg\"\npath = \"src/custom.rs\"\n",
+                "\n[[bin]]\nname = \"lib_cfg\"\npath = \"src/main.rs\"\n",
+            ),
+            &[
+                ("src/custom.rs", "pub fn lib_fn() -> i32 { 99 }\n"),
+                (
+                    "src/main.rs",
+                    "use lib_cfg::lib_fn;\nfn main() { println!(\"{}\", lib_fn()); }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("fn lib_fn"),
+            "custom lib path must be expanded"
+        );
+    }
+
+    /// Test multiple modules in custom library path
+    #[test]
+    fn bundles_multiple_modules_with_custom_lib_path() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            concat!(
+                "[package]\nname = \"multi_mod\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                "\n[lib]\nname = \"multi_mod\"\npath = \"src/lib_root.rs\"\n",
+                "\n[[bin]]\nname = \"multi_mod\"\npath = \"src/bin.rs\"\n",
+            ),
+            &[
+                (
+                    "src/lib_root.rs",
+                    "pub mod alpha;\npub fn call() { alpha::work(); }\n",
+                ),
+                ("src/alpha.rs", "pub fn work() {}\n"),
+                (
+                    "src/bin.rs",
+                    "use multi_mod::call;\nfn main() { call(); }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("pub mod alpha"),
+            "submodules must be preserved"
+        );
+        assert!(
+            bundled.contains("fn work"),
+            "submodule functions must be present"
+        );
+    }
+}
+
+mod macro_expansion_coverage {
+    use super::*;
+
+    /// Test that macros that reference dependencies are properly handled
+    #[test]
+    fn handles_macro_with_dependency_references() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("macro_dep"),
+            &[(
+                "src/main.rs",
+                "macro_rules! use_vec {\n  () => { Vec::new() }\n}\n\
+                 fn main() {\n  let v = use_vec!();\n  println!(\"{:?}\", v);\n}\n",
+            )],
+        );
+
+        let bundled = bundle_and_parse(temp.path());
+        assert!(
+            bundled.contains("macro_rules! use_vec"),
+            "macros must survive bundling"
+        );
+    }
+}
+
+mod validate_with_transforms {
+    use super::*;
+
+    /// Test that --validate respects transform options
+    #[test]
+    fn validate_applies_configured_transforms() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("validate_transforms"),
+            &[(
+                "src/main.rs",
+                "#[cfg(test)]\nfn test_only() {}\nfn main() {}\n",
+            )],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .arg("--validate")
+            .assert()
+            .success();
+    }
+}
+
+mod usability {
+    use super::*;
+    use std::process::{Command, Stdio};
+
+    /// Every other cargo command searches parent directories; this one used to
+    /// demand that you stand in the project root.
+    #[test]
+    fn bundles_from_a_nested_subdirectory() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("nested"),
+            &[
+                ("src/main.rs", "mod deep;\nfn main() { deep::go(); }\n"),
+                ("src/deep/mod.rs", "pub fn go() { println!(\"ok\"); }\n"),
+            ],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path().join("src/deep"))
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("fn go"));
+    }
+
+    /// A workspace root has no single package to bundle. Saying so, and naming
+    /// the members, beats reporting that metadata is missing.
+    #[test]
+    fn workspace_root_names_its_members() {
+        let temp = TempDir::new().expect("temp dir");
+        fs::write(
+            temp.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"puzzle1\", \"puzzle2\"]\nresolver = \"2\"\n",
+        )
+        .expect("write workspace manifest");
+        for member in ["puzzle1", "puzzle2"] {
+            write_project(
+                &temp.path().join(member),
+                &simple_manifest(member),
+                &[("src/main.rs", "fn main() {}\n")],
+            );
+        }
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("is a workspace"))
+            .stderr(predicate::str::contains("cg-bundler puzzle1"))
+            .stderr(predicate::str::contains("cg-bundler puzzle2"));
+    }
+
+    /// The most likely first-run mistake deserves a message about directories,
+    /// not about `cargo metadata`.
+    #[test]
+    fn missing_manifest_explains_itself() {
+        let temp = TempDir::new().expect("temp dir");
+        fs::write(temp.path().join("README.md"), "not a crate").expect("write file");
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("no Cargo.toml"))
+            .stderr(predicate::str::contains("or any parent directory"));
+    }
+
+    /// A problem in the user's own code is not a bug in the bundler, so it is
+    /// not dressed up as one. The link stays reachable; the "found a bug?"
+    /// framing does not.
+    #[test]
+    fn project_errors_are_not_framed_as_bundler_bugs() {
+        let temp = TempDir::new().expect("temp dir");
+        write_project(
+            temp.path(),
+            &simple_manifest("syntax_error"),
+            &[("src/main.rs", "fn main() { let x = ; }\n")],
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Parsing error"))
+            .stderr(predicate::str::contains("Questions or feedback"))
+            .stderr(predicate::str::contains("💡 Need help or found a bug?").not())
+            .stderr(predicate::str::contains("Your feedback helps improve").not());
+    }
+
+    /// `cg-bundler | head` closes the pipe early. That is ordinary shell usage,
+    /// not a crash.
+    #[test]
+    fn a_closed_stdout_pipe_is_not_a_panic() {
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("test_project");
+
+        let mut child = Command::new(cargo_bin_path())
+            .arg(&project)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn cg-bundler");
+
+        // Close the read end while the bundle is still being written.
+        drop(child.stdout.take().expect("stdout is piped"));
+
+        let output = child.wait_with_output().expect("wait for cg-bundler");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(
+            !stderr.contains("panicked"),
+            "a closed pipe must not panic:\n{stderr}"
+        );
+        assert_ne!(
+            output.status.code(),
+            Some(101),
+            "exited as a panic: {stderr}"
+        );
+    }
+
+    fn cargo_bin_path() -> std::path::PathBuf {
+        // The integration test binary lives next to the built CLI.
+        let mut path = std::env::current_exe().expect("test binary path");
+        path.pop();
+        if path.ends_with("deps") {
+            path.pop();
+        }
+        path.join(format!("cg-bundler{}", std::env::consts::EXE_SUFFIX))
+    }
+}

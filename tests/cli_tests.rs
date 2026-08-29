@@ -420,21 +420,24 @@ fn main() {
             .stdout(predicate::str::contains("https://docs.rs/cg-bundler"));
     }
 
+    /// A path that is not a Cargo project is the user's mistake, not a defect in
+    /// the bundler. The error says so plainly and still offers the issue tracker,
+    /// but without the "found a bug?" framing. (That banner is still used for
+    /// unexpected failures; see the `diagnostics` unit tests.)
     #[test]
-    fn test_cli_error_contains_github_issues_link() {
+    fn test_cli_error_for_missing_project_is_actionable() {
         let mut cmd = cargo_bin_cmd!("cg-bundler");
 
         cmd.arg("/nonexistent/project/path")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("💡 Need help or found a bug?"))
+            .stderr(predicate::str::contains("does not exist"))
+            // The link stays reachable, but a missing path is not a defect in
+            // the bundler, so it is not framed as one.
             .stderr(predicate::str::contains(
                 "https://github.com/MathieuSoysal/CG-Bundler/issues/new",
             ))
-            .stderr(predicate::str::contains(
-                "Your feedback helps improve CG-Bundler",
-            ))
-            .stderr(predicate::str::contains("━"));
+            .stderr(predicate::str::contains("💡 Need help or found a bug?").not());
     }
 
     #[test]
