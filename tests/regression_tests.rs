@@ -715,6 +715,169 @@ mod minification {
     }
 }
 
+mod dependency_scoping {
+    use super::*;
+
+    /// `helper` is a path dependency; `app` also declares a `helper` module of its own.
+    fn write_workspace(root: &Path, app_files: &[(&str, &str)]) {
+        write_project(
+            &root.join("helper"),
+            "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            &[("src/lib.rs", "pub fn value() -> i32 { 100 }\n")],
+        );
+        write_project(
+            &root.join("app"),
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = { path = \"../helper\" }\n",
+            app_files,
+        );
+    }
+
+    /// A `:` that separates a field from its value is not a path separator, so it must
+    /// not stop a dependency path inside a macro from being retargeted.
+    #[test]
+    fn rewrites_dependency_paths_after_a_field_colon_in_a_macro() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            &[
+                ("src/main.rs", "mod inner;\nfn main() { inner::run(); }\n"),
+                (
+                    "src/inner.rs",
+                    concat!(
+                        "pub struct Holder { pub v: i32 }\n",
+                        "pub fn run() {\n",
+                        // A struct literal *inside* a macro: the `v:` here is the
+                        // colon that used to suppress the rewrite.
+                        "    println!(\"{}\", Holder { v: helper::value() }.v);\n",
+                        // And an absolute path inside a macro.
+                        "    println!(\"{}\", ::helper::value());\n",
+                        "}\n",
+                    ),
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        // `prettyplease` prints a synthesized `crate` keyword as `crate ::`; the
+        // rendering differs from the AST path but the tokens do not.
+        let tightened = bundled.replace(" ::", "::");
+        assert!(
+            !tightened.contains("v: helper::value"),
+            "a struct-literal colon must not block the rewrite:\n{bundled}"
+        );
+        assert!(
+            !tightened.contains("::helper::value") || tightened.contains("crate::helper::value"),
+            "an absolute path must be anchored at the bundle root:\n{bundled}"
+        );
+        assert_eq!(
+            tightened.matches("crate::helper::value").count(),
+            2,
+            "both dependency references must be retargeted:\n{bundled}"
+        );
+    }
+
+    /// `::helper::X` anchors at the extern prelude, which is exactly where the
+    /// dependency used to live; the anchor must move with it.
+    #[test]
+    fn rewrites_dependency_paths_with_a_leading_colon() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            &[
+                (
+                    "src/main.rs",
+                    "mod inner;\nfn main() { println!(\"{}\", inner::go()); }\n",
+                ),
+                (
+                    "src/inner.rs",
+                    "use ::helper::value;\n                     pub fn go() -> i32 { let d: i32 = ::helper::value(); d + value() }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            !bundled.contains("::crate::") && !bundled.contains("use ::helper"),
+            "a leading `::` must not survive the rewrite:\n{bundled}"
+        );
+        assert!(
+            bundled.contains("use crate::helper::value")
+                && bundled.contains("crate::helper::value()"),
+            "both forms must be anchored at the bundle root:\n{bundled}"
+        );
+    }
+
+    /// A module declared locally shadows a same-named dependency, so its references
+    /// must be left alone.
+    #[test]
+    fn local_module_shadows_a_dependency_of_the_same_name() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            &[
+                (
+                    "src/main.rs",
+                    "mod inner;\nmod user;\n                     fn main() { println!(\"{} {}\", inner::from_dep(), user::from_local()); }\n",
+                ),
+                (
+                    "src/inner.rs",
+                    "pub fn from_dep() -> i32 { helper::value() }\n",
+                ),
+                (
+                    "src/user.rs",
+                    "mod helper { pub fn value() -> i32 { 1 } }\n                     pub fn from_local() -> i32 { helper::value() }\n",
+                ),
+            ],
+        );
+
+        let bundled = bundle_and_parse(&temp.path().join("app"));
+
+        assert!(
+            bundled.contains("pub fn from_local() -> i32 { helper::value() }")
+                || bundled.contains("helper::value()"),
+            "sanity: the local call survives:\n{bundled}"
+        );
+        assert_eq!(
+            bundled.matches("crate::helper::value").count(),
+            1,
+            "only the real dependency reference may be retargeted:\n{bundled}"
+        );
+    }
+
+    /// Inlining a dependency over a same-named module of this crate would silently
+    /// resolve every `helper::..` path to the wrong code.
+    #[test]
+    fn dependency_colliding_with_a_local_module_is_an_error() {
+        let temp = TempDir::new().expect("temp dir");
+        write_workspace(
+            temp.path(),
+            &[
+                (
+                    "src/main.rs",
+                    "mod helper;\nfn main() { println!(\"{}\", helper::local()); }\n",
+                ),
+                ("src/helper.rs", "pub fn local() -> i32 { 1 }\n"),
+            ],
+        );
+
+        let error = bundle(temp.path().join("app")).expect_err("collision must be reported");
+        let message = error.to_string();
+
+        assert!(
+            message.contains("helper") && message.contains("collides"),
+            "the error must name the collision: {message}"
+        );
+
+        cargo_bin_cmd!("cg-bundler")
+            .current_dir(temp.path().join("app"))
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("collides"));
+    }
+}
+
 mod crate_path_requalification {
     use super::*;
 
