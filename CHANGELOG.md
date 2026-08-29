@@ -38,6 +38,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   substituted inside it
 - The library no longer prints progress messages to stderr
 - `--validate` uses the requested transform options
+- Paths inside a macro are no longer left un-rewritten when preceded by a single `:`,
+  as in the `v:` of a struct literal; only a `::` that continues a longer path
+  suppresses the rewrite now
+- A leading `::`, as in `use ::dep::X` or `::dep::X`, is dropped when the path is
+  retargeted; it used to survive and produce the un-parseable `::crate::dep::X`
+- A module declared locally now shadows a dependency of the same name instead of
+  having its own references retargeted at the inlined dependency
+- A dependency whose name collides with a module defined by this crate is reported as
+  an error instead of silently resolving every such path to the wrong code
+- `--watch` no longer rebuilds forever when `-o` writes inside the watched directory:
+  the bundle's own output is not treated as a source change
 - `--watch` writes status messages to stderr (keeping stdout clean) and uses a trailing debounce so a burst of edits rebuilds the final state
 
 ### Added
