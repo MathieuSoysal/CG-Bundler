@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use colored::Colorize;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
-use cg_bundler::BundlerError;
+use cg_bundler::{BundlerError, CargoProject};
 
 use crate::cli::Cli;
 use crate::commands::bundle;
@@ -76,8 +76,26 @@ fn resolve_output_path(cli: &Cli) -> Option<PathBuf> {
     Some(resolved.unwrap_or(absolute))
 }
 
+/// The directory holding the project's manifest.
+///
+/// `--src-dir` is relative to the project, not to wherever the command happened
+/// to be typed, so watching works from a subdirectory just as bundling does.
+fn project_root(cli: &Cli) -> Result<PathBuf, BundlerError> {
+    let project = CargoProject::new(cli.get_project_path())?;
+    let manifest = project.root_package().manifest_path.clone();
+
+    manifest.parent().map_or_else(
+        || {
+            Err(BundlerError::ProjectStructure {
+                message: format!("manifest '{manifest}' has no parent directory"),
+            })
+        },
+        |directory| Ok(directory.as_std_path().to_path_buf()),
+    )
+}
+
 fn resolve_src_dir(cli: &Cli) -> Result<PathBuf, BundlerError> {
-    let watch_path = cli.get_project_path().join(&cli.src_dir);
+    let watch_path = project_root(cli)?.join(&cli.src_dir);
     if !watch_path.exists() {
         return Err(BundlerError::Io {
             source: std::io::Error::new(
@@ -247,6 +265,23 @@ mod tests {
             paths: paths.to_vec(),
             attrs: notify::event::EventAttributes::default(),
         }
+    }
+
+    /// `--src-dir` belongs to the project, so watching has to work from a
+    /// subdirectory just as bundling does.
+    #[test]
+    fn src_dir_is_resolved_against_the_project_root() {
+        let tmp = TempDir::new().unwrap();
+        make_project(tmp.path(), "fn main() {}");
+        let nested = tmp.path().join("src");
+
+        let cli = Cli::try_parse_from(["cg-bundler", nested.to_str().unwrap(), "--watch"]).unwrap();
+
+        let resolved = resolve_src_dir(&cli).expect("resolves from inside the project");
+        assert_eq!(
+            resolved.canonicalize().expect("resolved path exists"),
+            nested.canonicalize().expect("src exists"),
+        );
     }
 
     /// Writing the bundle into the watched directory used to be seen as a source
