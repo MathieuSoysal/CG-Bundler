@@ -146,7 +146,16 @@ impl CodeTransformer<'_> {
         ext_lib_path: &Path,
     ) -> Result<()> {
         if Self::has_module_named(items, ext_name) {
-            return Ok(());
+            // Inlining would put the dependency where the crate's own module already
+            // lives, and every `<ext_name>::..` path retargeted at it would silently
+            // resolve to the wrong code. rustc rejects the same ambiguity (E0659).
+            return Err(BundlerError::ProjectStructure {
+                message: format!(
+                    "Dependency '{ext_name}' collides with a module of the same name \
+                     defined by this crate. Rename one of them, or import the module \
+                     through `crate::{ext_name}` so the reference is unambiguous."
+                ),
+            });
         }
 
         let code =
