@@ -30,7 +30,12 @@ pub fn run(cli: &Cli) -> Result<(), BundlerError> {
     perform_initial_build(cli);
 
     let (event_rx, _watcher) = install_file_watcher(&watch_path)?;
-    run_event_loop(cli, &event_rx, &shutdown_rx);
+    run_event_loop(
+        cli,
+        resolve_output_path(cli).as_ref(),
+        &event_rx,
+        &shutdown_rx,
+    );
 
     eprintln!("{} Watch mode stopped.", "🛑".red());
     Ok(())
@@ -47,6 +52,28 @@ fn print_banner(cli: &Cli) {
     }
     eprintln!("{} Debounce delay: {}ms", "⏱️".blue(), cli.debounce);
     eprintln!("{} Press Ctrl+C to stop\n", "ℹ️".yellow());
+}
+
+/// The bundle's destination, resolved so it can be compared against event paths.
+///
+/// Writing the bundle into the watched directory would otherwise be seen as a
+/// source change and rebuild forever.
+fn resolve_output_path(cli: &Cli) -> Option<PathBuf> {
+    let output = cli.output.as_ref()?;
+    let absolute = if output.is_absolute() {
+        output.clone()
+    } else {
+        cli.get_project_path().join(output)
+    };
+
+    // The file may not exist yet, so canonicalise the directory and re-attach the
+    // file name rather than canonicalising the whole path.
+    let resolved = absolute
+        .parent()
+        .zip(absolute.file_name())
+        .and_then(|(parent, name)| parent.canonicalize().ok().map(|dir| dir.join(name)));
+
+    Some(resolved.unwrap_or(absolute))
 }
 
 fn resolve_src_dir(cli: &Cli) -> Result<PathBuf, BundlerError> {
@@ -104,7 +131,12 @@ fn install_file_watcher(
     Ok((rx, watcher))
 }
 
-fn run_event_loop(cli: &Cli, events: &Receiver<WatchEvent>, shutdown: &Receiver<()>) {
+fn run_event_loop(
+    cli: &Cli,
+    output_path: Option<&PathBuf>,
+    events: &Receiver<WatchEvent>,
+    shutdown: &Receiver<()>,
+) {
     let debounce = Duration::from_millis(cli.debounce);
     let mut pending: Option<(Instant, Option<String>)> = None;
 
@@ -116,7 +148,7 @@ fn run_event_loop(cli: &Cli, events: &Receiver<WatchEvent>, shutdown: &Receiver<
 
         match events.recv_timeout(Duration::from_millis(50)) {
             Ok(Ok(event)) => {
-                if should_rebuild(&event) {
+                if is_rebuild_trigger(&event, output_path) {
                     // Trailing debounce: a burst of writes yields one rebuild of the
                     // final state rather than one rebuild of the first state.
                     pending = Some((Instant::now(), changed_file_name(&event)));
@@ -162,6 +194,33 @@ fn trigger_rebuild(cli: &Cli) {
 
 /// Whether a notify event should trigger a rebuild (only Rust source files).
 #[must_use]
+/// Whether `event` should start the debounce window for a rebuild.
+///
+/// This is the single predicate the event loop consults, so the tests exercise
+/// exactly what the loop does.
+fn is_rebuild_trigger(event: &Event, output_path: Option<&PathBuf>) -> bool {
+    should_rebuild(event) && !targets_output(event, output_path)
+}
+
+/// Whether `event` only reports the bundle being written back out.
+///
+/// `-o` may legitimately point inside the watched directory; without this the
+/// rebuild would observe its own output and loop forever.
+fn targets_output(event: &Event, output_path: Option<&PathBuf>) -> bool {
+    let Some(output) = output_path else {
+        return false;
+    };
+
+    event.paths.iter().all(|path| {
+        let resolved = path
+            .parent()
+            .and_then(|parent| parent.canonicalize().ok())
+            .and_then(|dir| path.file_name().map(|name| dir.join(name)));
+
+        resolved.as_ref() == Some(output) || path == output
+    })
+}
+
 pub fn should_rebuild(event: &Event) -> bool {
     match &event.kind {
         EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {
@@ -181,6 +240,106 @@ mod tests {
     use crate::test_support::make_project;
     use clap::Parser;
     use tempfile::TempDir;
+
+    fn event_for(paths: &[PathBuf]) -> Event {
+        Event {
+            kind: EventKind::Modify(notify::event::ModifyKind::Any),
+            paths: paths.to_vec(),
+            attrs: notify::event::EventAttributes::default(),
+        }
+    }
+
+    /// Writing the bundle into the watched directory used to be seen as a source
+    /// change, so every rebuild triggered the next one.
+    #[test]
+    fn output_file_events_do_not_trigger_a_rebuild() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        let output = src.join("bundle.rs");
+        std::fs::write(&output, "fn main() {}").unwrap();
+
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--watch",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .unwrap();
+        let resolved = resolve_output_path(&cli);
+
+        let event = event_for(std::slice::from_ref(&output));
+        assert!(should_rebuild(&event), "sanity: a .rs write is interesting");
+        assert!(
+            !is_rebuild_trigger(&event, resolved.as_ref()),
+            "the bundle's own output must not start a rebuild"
+        );
+    }
+
+    /// A real source edit must still get through the filter.
+    #[test]
+    fn source_file_events_still_trigger_a_rebuild() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        let output = src.join("bundle.rs");
+        std::fs::write(&output, "fn main() {}").unwrap();
+        let main_rs = src.join("main.rs");
+        std::fs::write(&main_rs, "fn main() {}").unwrap();
+
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--watch",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .unwrap();
+        let resolved = resolve_output_path(&cli);
+
+        let event = event_for(&[main_rs]);
+        assert!(is_rebuild_trigger(&event, resolved.as_ref()));
+    }
+
+    /// An event naming both the output and a real source file is a real change.
+    #[test]
+    fn mixed_events_still_trigger_a_rebuild() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        let output = src.join("bundle.rs");
+        std::fs::write(&output, "fn main() {}").unwrap();
+        let main_rs = src.join("main.rs");
+        std::fs::write(&main_rs, "fn main() {}").unwrap();
+
+        let cli = Cli::try_parse_from([
+            "cg-bundler",
+            tmp.path().to_str().unwrap(),
+            "--watch",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .unwrap();
+        let resolved = resolve_output_path(&cli);
+
+        let event = event_for(&[output, main_rs]);
+        assert!(is_rebuild_trigger(&event, resolved.as_ref()));
+    }
+
+    /// Without `-o` the bundle goes to stdout and nothing needs filtering.
+    #[test]
+    fn stdout_output_filters_nothing() {
+        let tmp = TempDir::new().unwrap();
+        let cli =
+            Cli::try_parse_from(["cg-bundler", tmp.path().to_str().unwrap(), "--watch"]).unwrap();
+
+        assert!(resolve_output_path(&cli).is_none());
+        assert!(is_rebuild_trigger(
+            &event_for(&[tmp.path().join("src/main.rs")]),
+            None
+        ));
+    }
 
     #[test]
     fn test_handle_watch_command_missing_src_dir_no_output() {
