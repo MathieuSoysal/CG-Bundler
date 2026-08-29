@@ -331,9 +331,11 @@ impl CodeTransformer<'_> {
             };
 
             if path.ident == self.crate_name {
+                item_use.leading_colon = None;
                 path.ident = syn::Ident::new("crate", path.ident.span());
             } else if self.external_libs.contains_key(&path.ident.to_string()) {
                 let span = path.ident.span();
+                item_use.leading_colon = None;
                 let inner = mem::replace(
                     &mut item_use.tree,
                     syn::UseTree::Glob(syn::UseGlob {
@@ -379,12 +381,18 @@ impl CodeTransformer<'_> {
     }
 
     /// Expand crate paths.
+    ///
+    /// A leading `::` anchors the path at the extern prelude, which is where both
+    /// this crate and its dependencies used to live. Bundling relocates them under
+    /// the bundle root, so the anchor is dropped along with the rewrite -- leaving
+    /// it in place would produce the un-parseable `::crate::..`.
     pub fn expand_crate_path(&self, path: &mut syn::Path) {
         if path.segments.len() < 2 {
             return;
         }
 
         if Self::path_starts_with(path, self.crate_name) {
+            path.leading_colon = None;
             if self.is_root {
                 let new_segments = mem::replace(&mut path.segments, Punctuated::new())
                     .into_pairs()
@@ -405,6 +413,7 @@ impl CodeTransformer<'_> {
             && self.external_libs.contains_key(&first.ident.to_string())
         {
             let span = first.ident.span();
+            path.leading_colon = None;
             let tail = mem::replace(&mut path.segments, Punctuated::new());
             path.segments
                 .push(syn::PathSegment::from(syn::Ident::new("crate", span)));
