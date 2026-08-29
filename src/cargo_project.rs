@@ -22,7 +22,7 @@ impl CargoProject {
     /// Returns an error if the Cargo project cannot be analyzed or parsed
     pub fn new<P: AsRef<Path>>(package_path: P) -> Result<Self> {
         let package_path = package_path.as_ref();
-        let manifest_path = package_path.join("Cargo.toml");
+        let manifest_path = Self::find_manifest(package_path)?;
 
         let metadata = cargo_metadata::MetadataCommand::new()
             .manifest_path(&manifest_path)
@@ -94,6 +94,54 @@ impl CargoProject {
     }
 
     /// Find the root package in the metadata
+    /// Locate the `Cargo.toml` that governs `start`.
+    ///
+    /// `start` may be the manifest itself, the package directory, or any
+    /// directory nested inside it. Parent directories are searched the way every
+    /// other cargo command searches them, so `cg-bundler` works from anywhere in
+    /// a project rather than only from its root.
+    fn find_manifest(start: &Path) -> Result<PathBuf> {
+        if start.file_name().is_some_and(|name| name == "Cargo.toml") {
+            return Ok(start.to_path_buf());
+        }
+
+        // Only an existing location may be searched upwards. Walking up from a
+        // path that does not exist would silently bundle whichever unrelated
+        // project happens to sit above the typo.
+        if !start.exists() {
+            return Err(BundlerError::ProjectStructure {
+                message: format!("'{}' does not exist", start.display()),
+            });
+        }
+
+        let start = if start.is_dir() {
+            start.to_path_buf()
+        } else {
+            start.parent().unwrap_or(start).to_path_buf()
+        };
+
+        let absolute = if start.is_absolute() {
+            start.clone()
+        } else {
+            std::env::current_dir().map_or_else(|_| start.clone(), |cwd| cwd.join(&start))
+        };
+
+        for directory in absolute.ancestors() {
+            let candidate = directory.join("Cargo.toml");
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+
+        Err(BundlerError::ProjectStructure {
+            message: format!(
+                "no Cargo.toml in '{}' or any parent directory\n  \
+                 Run cg-bundler from inside a Cargo project, or point it at one: cg-bundler <path>",
+                start.display()
+            ),
+        })
+    }
+
     fn find_root_package(metadata: &Metadata, manifest_path: &Path) -> Result<Package> {
         let canonical_manifest =
             std::fs::canonicalize(manifest_path).unwrap_or_else(|_| manifest_path.to_path_buf());
@@ -107,9 +155,48 @@ impl CargoProject {
                 pkg_canonical == canonical_manifest
             })
             .cloned()
-            .ok_or_else(|| BundlerError::ProjectStructure {
-                message: "Failed to find root package in metadata".to_string(),
+            .ok_or_else(|| Self::no_root_package_error(metadata, manifest_path))
+    }
+
+    /// Explain a manifest that defines no package of its own.
+    ///
+    /// For a `[workspace]` root that is normal -- cargo calls it a virtual
+    /// manifest -- and it is the layout people reach for when they keep many
+    /// puzzles in one repository. Name the members so the next command is
+    /// obvious instead of reporting that metadata is missing.
+    fn no_root_package_error(metadata: &Metadata, manifest_path: &Path) -> BundlerError {
+        let mut members: Vec<String> = metadata
+            .workspace_members
+            .iter()
+            .filter_map(|id| metadata.packages.iter().find(|package| &package.id == id))
+            .filter_map(|package| package.manifest_path.parent())
+            .map(|directory| {
+                directory
+                    .strip_prefix(&metadata.workspace_root)
+                    .map_or_else(|_| directory.to_string(), ToString::to_string)
             })
+            .filter(|relative| !relative.is_empty())
+            .map(|relative| format!("    cg-bundler {relative}"))
+            .collect();
+        members.sort_unstable();
+
+        if members.is_empty() {
+            return BundlerError::ProjectStructure {
+                message: format!(
+                    "'{}' does not define a package to bundle",
+                    manifest_path.display()
+                ),
+            };
+        }
+
+        BundlerError::ProjectStructure {
+            message: format!(
+                "'{}' is a workspace, so there is no single package to bundle.\n  \
+                 Bundle one of its members instead:\n{}",
+                manifest_path.display(),
+                members.join("\n")
+            ),
+        }
     }
 
     /// Analyze targets and extract binary and library targets
