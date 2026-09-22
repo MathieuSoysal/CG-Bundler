@@ -37,10 +37,10 @@ cargo_metadata = "0.23"
 prettyplease = "0.3"
 notify = "8.2"
 ctrlc = "3.5"
-regex = "1.12.3"
+regex = "1.13.1"
 
 [dev-dependencies]
-tempfile = "3.25"
+tempfile = "3.27"
 assert_cmd = "2.2"
 predicates = "3.1"
 syn = { version = "3.0", features = ["full", "parsing"] }
